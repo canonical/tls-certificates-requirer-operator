@@ -9,6 +9,10 @@ and provide it back into their application relation data.
 
 This charm is useful when developing and testing certificate providers.
 
+## Pre-requisites
+
+- Juju >= 3.0
+
 ## Usage
 
 Deploy the charm and relate it to a certificate provider:
