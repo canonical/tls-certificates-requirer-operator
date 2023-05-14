@@ -1,0 +1,19 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+name: tls-certificates-requirer
+summary: |
+  Charm that requests X.509 certificates using the tls-certificates interface.
+description: |
+  Charm that requests X.509 certificates using the `tls-certificates` interface.
+  
+  It uses the user-provided `subject` configuration to generate a certificate signing request
+  (CSR) that will be inserted into its unit relation data. In return, a certificate provider
+  should use this CSR, generate a certificate, and provide it back into their application
+  relation data.
+  
+  This charm is useful when developing and testing certificate provider.
+
+requires:
+  certificates:
+    interface: tls-certificates

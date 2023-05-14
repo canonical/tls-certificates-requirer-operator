@@ -1,0 +1,134 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+import unittest
+from unittest.mock import Mock, patch
+
+from ops import testing
+from ops.model import WaitingStatus
+
+from charm import TLSRequirerOperatorCharm
+
+
+class TestCharm(unittest.TestCase):
+    def setUp(self):
+        self.harness = testing.Harness(TLSRequirerOperatorCharm)
+        self.addCleanup(self.harness.cleanup)
+        self.harness.begin()
+
+    @patch("charm.generate_password")
+    @patch("charm.generate_private_key")
+    def test_given_unit_is_leader_when_on_install_then_private_key_is_generated(
+        self,
+        patch_generate_private_key,
+        patch_generate_password,
+    ):
+        self.harness.set_leader(is_leader=True)
+        private_key_password = "whatever password"
+        private_key = "whatever private key"
+        patch_generate_private_key.return_value = private_key.encode()
+        patch_generate_password.return_value = private_key_password
+        self.harness.charm.on.install.emit()
+
+        secret = self.harness._backend.secret_get(label="private-key")
+
+        self.assertEqual(secret["private-key"], private_key)
+        self.assertEqual(secret["private-key-password"], private_key_password)
+
+    def test_given_private_key_not_stored_when_on_request_certificate_hook_then_status_is_waiting(
+        self,
+    ):
+        self.harness.set_leader(is_leader=True)
+
+        self.harness.charm._request_certificate_hook(event=Mock())
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            WaitingStatus("Waiting for private key and password to be generated."),
+        )
+
+    @patch(
+        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+    )
+    @patch("charm.generate_csr")
+    def test_given_private_key_is_stored_and_certificate_relation_is_created_when_on_request_certificate_hook_then_certificate_is_requested(  # noqa: E501
+        self,
+        patch_generate_csr,
+        patch_request_certificate,
+    ):
+        private_key = "whatever private key"
+        private_key_password = "whatever password"
+        csr = "whatever csr"
+        self.harness.set_leader(is_leader=True)
+        self.harness._backend.secret_add(
+            label="private-key",
+            content={
+                "private-key": private_key,
+                "private-key-password": private_key_password,
+            },
+        )
+        patch_generate_csr.return_value = csr.encode()
+        self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
+
+        self.harness.charm._request_certificate_hook(event=Mock())
+
+        patch_request_certificate.assert_called_with(certificate_signing_request=csr.encode())
+
+    def test_given_unit_is_leader_when_on_certificate_available_then_certificate_is_stored(self):
+        certificate = "whatever certificate"
+        ca = "whatever ca"
+        chain = "whatever chain"
+        csr = "whatever csr"
+        self.harness.set_leader(is_leader=True)
+
+        self.harness.charm._on_certificate_available(
+            event=Mock(
+                certificate=certificate,
+                ca=ca,
+                chain=chain,
+                certificate_signing_request=csr,
+            )
+        )
+
+        secret = self.harness._backend.secret_get(label="certificate")
+        self.assertEqual(secret["certificate"], certificate)
+        self.assertEqual(secret["ca-certificate"], ca)
+        self.assertEqual(
+            secret["chain"],
+            chain,
+        )
+        self.assertEqual(
+            secret["csr"],
+            csr,
+        )
+
+    def test_given_certificate_is_not_stored_when_on_get_certificate_action_then_event_fails(self):
+        event = Mock()
+        self.harness.set_leader(is_leader=True)
+
+        self.harness.charm._on_get_certificate_action(event=event)
+
+        event.fail.assert_called()
+
+    def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
+        self,
+    ):
+        self.harness.set_leader(is_leader=True)
+        certificate = "whatever certificate"
+        ca = "whatever ca"
+        chain = "whatever chain"
+        event = Mock()
+        self.harness._backend.secret_add(
+            label="certificate",
+            content={"certificate": certificate, "ca-certificate": ca, "chain": chain},
+        )
+
+        self.harness.charm._on_get_certificate_action(event=event)
+
+        event.set_results.assert_called_with(
+            {
+                "certificate": certificate,
+                "ca-certificate": ca,
+                "chain": chain,
+            }
+        )
