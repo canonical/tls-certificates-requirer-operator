@@ -100,12 +100,12 @@ class TLSRequirerOperatorCharm(CharmBase):
         """
         if not self.unit.is_leader():
             return
-        csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
-        csr_secret_content = csr_secret.get_content()
-        logger.info(f"Stored CSR: {csr_secret_content['csr']}")
-        logger.info(f"Event CSR: {event.certificate_signing_request}")
-        if csr_secret_content["csr"] != event.certificate_signing_request:
-            logger.info("CSR's don't match!")
+        # csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
+        # csr_secret_content = csr_secret.get_content()
+        # logger.info(f"Stored CSR: {csr_secret_content['csr']}")
+        # logger.info(f"Event CSR: {event.certificate_signing_request}")
+        # if csr_secret_content["csr"] != event.certificate_signing_request:
+        #     logger.info("CSR's don't match!")
 
         self.app.add_secret(
             content={
