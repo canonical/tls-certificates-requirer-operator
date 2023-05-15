@@ -16,7 +16,14 @@ from charms.tls_certificates_interface.v2.tls_certificates import (  # type: ign
     generate_csr,
     generate_private_key,
 )
-from ops.charm import ActionEvent, CharmBase, EventBase, InstallEvent
+from ops.charm import (
+    ActionEvent,
+    CharmBase,
+    ConfigChangedEvent,
+    EventBase,
+    InstallEvent,
+    RelationBrokenEvent,
+)
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
 
@@ -35,10 +42,14 @@ class TLSRequirerOperatorCharm(CharmBase):
         """Handles events for certificate management."""
         super().__init__(*args)
         self.certificates = TLSCertificatesRequiresV2(self, "certificates")
-        self.framework.observe(self.on.config_changed, self._request_certificate_hook)
+        self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(
-            self.on.certificates_relation_joined, self._request_certificate_hook
+            self.on.certificates_relation_joined, self._on_certificates_relation_joined
+        )
+        self.framework.observe(
+            self.on.certificates_relation_broken,
+            self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
         self.framework.observe(
@@ -98,6 +109,18 @@ class TLSRequirerOperatorCharm(CharmBase):
         )
         logger.info("Private key generated")
 
+    def _on_certificates_relation_broken(self, event: RelationBrokenEvent) -> None:
+        """Removes Certificate from juju secret.
+
+        Args:
+            event: Juju event.
+        """
+        if not self.unit.is_leader():
+            return
+        if self._certificate_is_stored:
+            certificate_secret = self.model.get_secret(label=CERTIFICATE_SECRET_LABEL)
+            certificate_secret.remove_all_revisions()
+
     def _on_certificate_available(self, event: CertificateAvailableEvent) -> None:
         """Stores the certificate in a Juju secret.
 
@@ -111,19 +134,24 @@ class TLSRequirerOperatorCharm(CharmBase):
         if csr_secret_content["csr"].strip() != event.certificate_signing_request:
             logger.info("New certificate CSR doesn't match with the one stored.")
             return
-        self.app.add_secret(
-            content={
-                "certificate": event.certificate,
-                "ca-certificate": event.ca,
-                "chain": json.dumps(event.chain),
-                "csr": event.certificate_signing_request,
-            },
-            label=CERTIFICATE_SECRET_LABEL,
-        )
+        certificate_secret_content = {
+            "certificate": event.certificate,
+            "ca-certificate": event.ca,
+            "chain": json.dumps(event.chain),
+            "csr": event.certificate_signing_request,
+        }
+        if self._certificate_is_stored:
+            certificate_secret = self.model.get_secret(label=CERTIFICATE_SECRET_LABEL)
+            certificate_secret.set_content(content=certificate_secret_content)
+        else:
+            self.app.add_secret(
+                content=certificate_secret_content,
+                label=CERTIFICATE_SECRET_LABEL,
+            )
         logger.info(f"New certificate is stored: {event.certificate}")
         self.unit.status = ActiveStatus()
 
-    def _request_certificate_hook(self, event: EventBase) -> None:
+    def _on_config_changed(self, event: ConfigChangedEvent) -> None:
         """Validates config and requests a new certificate.
 
         Args:
@@ -141,10 +169,36 @@ class TLSRequirerOperatorCharm(CharmBase):
             event.defer()
             return
         if self._certificates_relation_created:
+            self._revoke_existing_certificates()
+            self._generate_csr()
             self._request_certificate()
             self.unit.status = WaitingStatus("Waiting for certificate to be available")
         else:
+            self._generate_csr()
             self.unit.status = ActiveStatus()
+
+    def _on_certificates_relation_joined(self, event: EventBase) -> None:
+        """Validates config and requests a new certificate.
+
+        Args:
+            event: Juju event.
+        """
+        if not self.unit.is_leader():
+            return
+        if not self._csr_is_stored:
+            self.unit.status = WaitingStatus("Waiting for CSR to be generated.")
+            return
+        self._request_certificate()
+        self.unit.status = WaitingStatus("Waiting for certificate to be available")
+
+    def _revoke_existing_certificates(self) -> None:
+        if not self._csr_is_stored:
+            return
+        secret = self.model.get_secret(label=CSR_SECRET_LABEL)
+        secret_content = secret.get_content()
+        self.certificates.request_certificate_revocation(
+            certificate_signing_request=secret_content["csr"].encode()
+        )
 
     def _request_certificate(self) -> None:
         """Requests X.509 certificate.
@@ -152,6 +206,16 @@ class TLSRequirerOperatorCharm(CharmBase):
         Retrieves private key and password from Juju secret, generates a certificate
         signing request (CSR) and inserts it into the `certificates` relation unit relation data.
         """
+        if not self._csr_is_stored:
+            raise RuntimeError("CSR is not stored")
+        csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
+        csr_secret_content = csr_secret.get_content()
+        self.certificates.request_certificate_creation(
+            certificate_signing_request=csr_secret_content["csr"].encode()
+        )
+
+    def _generate_csr(self) -> None:
+        """Generates CSR based on private key and stores it in Juju secret."""
         if not self._private_key_is_stored:
             raise RuntimeError("Private key not stored.")
         private_key_secret = self.model.get_secret(label=PRIVATE_KEY_SECRET_LABEL)
@@ -161,8 +225,12 @@ class TLSRequirerOperatorCharm(CharmBase):
             private_key_password=private_key_secret_content["private-key-password"].encode(),
             subject=self._config_subject,
         )
-        self.certificates.request_certificate_creation(certificate_signing_request=csr)
-        self.app.add_secret(content={"csr": csr.decode()}, label=CSR_SECRET_LABEL)
+        csr_secret_content = {"csr": csr.decode()}
+        if self._csr_is_stored:
+            csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
+            csr_secret.set_content(content=csr_secret_content)
+        else:
+            self.app.add_secret(content=csr_secret_content, label=CSR_SECRET_LABEL)
 
     @property
     def _private_key_is_stored(self) -> bool:
@@ -171,26 +239,38 @@ class TLSRequirerOperatorCharm(CharmBase):
         Returns:
             bool: Whether private key is stored.
         """
-        try:
-            self.model.get_secret(label=PRIVATE_KEY_SECRET_LABEL)
-            return True
-        except SecretNotFoundError:
-            return False
+        return self._secret_exists(label=PRIVATE_KEY_SECRET_LABEL)
 
     @property
-    def _certificate_is_available(self) -> bool:
+    def _csr_is_stored(self) -> bool:
+        """Returns whether private key is stored.
+
+        Returns:
+            bool: Whether private key is stored.
+        """
+        return self._secret_exists(label=CSR_SECRET_LABEL)
+
+    @property
+    def _certificate_is_stored(self) -> bool:
         """Returns whether certificate is available in Juju secret.
 
         Returns:
             bool: Whether certificate is stored
         """
+        return self._secret_exists(label=CERTIFICATE_SECRET_LABEL)
+
+    def _secret_exists(self, label: str) -> bool:
+        """Returns whether a given secret exists.
+
+        Args:
+            label: Juju secret label
+
+        Returns:
+            bool: Whether the secret exists
+        """
         try:
-            secret = self.model.get_secret(label=CERTIFICATE_SECRET_LABEL)
-            content = secret.get_content()
-            if content.get("certificate", None):
-                return True
-            else:
-                return False
+            self.model.get_secret(label=label)
+            return True
         except SecretNotFoundError:
             return False
 
@@ -202,7 +282,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         """
         if not self.unit.is_leader():
             return
-        if self._certificate_is_available:
+        if self._certificate_is_stored:
             secret = self.model.get_secret(label=CERTIFICATE_SECRET_LABEL)
             content = secret.get_content()
             event.set_results(
