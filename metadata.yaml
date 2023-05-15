@@ -17,3 +17,6 @@ description: |
 requires:
   certificates:
     interface: tls-certificates
+
+assumes:
+  - juju >= 3.1
