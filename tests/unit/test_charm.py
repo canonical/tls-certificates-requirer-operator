@@ -1,6 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -74,12 +75,13 @@ class TestCharm(unittest.TestCase):
 
         patch_request_certificate.assert_called_with(certificate_signing_request=csr.encode())
 
-    def test_given_unit_is_leader_when_on_certificate_available_then_certificate_is_stored(self):
+    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(self):
         certificate = "whatever certificate"
         ca = "whatever ca"
-        chain = "whatever chain"
+        chain = ["whatever cert 1", "whatever cert 2"]
         csr = "whatever csr"
         self.harness.set_leader(is_leader=True)
+        self.harness._backend.secret_add(label="csr", content={"csr": csr})
 
         self.harness.charm._on_certificate_available(
             event=Mock(
@@ -95,7 +97,7 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(secret["ca-certificate"], ca)
         self.assertEqual(
             secret["chain"],
-            chain,
+            json.dumps(chain),
         )
         self.assertEqual(
             secret["csr"],

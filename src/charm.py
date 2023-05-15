@@ -4,6 +4,7 @@
 
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
+import json
 import logging
 import secrets
 import string
@@ -55,6 +56,11 @@ class TLSRequirerOperatorCharm(CharmBase):
 
     @property
     def _certificates_relation_created(self) -> bool:
+        """Return whether the `certificates` relation was created.
+
+        Returns:
+            bool: Whether the `certificates` relation was created.
+        """
         return self._relation_created("certificates")
 
     def _relation_created(self, relation_name: str) -> bool:
@@ -64,7 +70,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             relation_name (str): Relation name
 
         Returns:
-            bool: True/False
+            bool: Whether a given relation was created.
         """
         try:
             if self.model.get_relation(relation_name):
@@ -100,11 +106,16 @@ class TLSRequirerOperatorCharm(CharmBase):
         """
         if not self.unit.is_leader():
             return
+        csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
+        csr_secret_content = csr_secret.get_content()
+        if csr_secret_content["csr"].strip() != event.certificate_signing_request:
+            logger.info("New certificate CSR doesn't match with the one stored.")
+            return
         self.app.add_secret(
             content={
                 "certificate": event.certificate,
                 "ca-certificate": event.ca,
-                "chain": event.chain,
+                "chain": json.dumps(event.chain),
                 "csr": event.certificate_signing_request,
             },
             label=CERTIFICATE_SECRET_LABEL,
@@ -131,6 +142,9 @@ class TLSRequirerOperatorCharm(CharmBase):
             return
         if self._certificates_relation_created:
             self._request_certificate()
+            self.unit.status = WaitingStatus("Waiting for certificate to be available")
+        else:
+            self.unit.status = ActiveStatus()
 
     def _request_certificate(self) -> None:
         """Requests X.509 certificate.
@@ -149,7 +163,6 @@ class TLSRequirerOperatorCharm(CharmBase):
         )
         self.certificates.request_certificate_creation(certificate_signing_request=csr)
         self.app.add_secret(content={"csr": csr.decode()}, label=CSR_SECRET_LABEL)
-        self.unit.status = WaitingStatus("Waiting for certificate to be available")
 
     @property
     def _private_key_is_stored(self) -> bool:
