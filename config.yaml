@@ -4,5 +4,5 @@
 options:
   subject:
     type: string
-    default: ubuntu.com
+    default: tls-requirer-operator
     description: Common name to be used.
