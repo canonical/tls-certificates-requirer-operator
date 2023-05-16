@@ -7,7 +7,6 @@
 import json
 import logging
 import secrets
-import string
 from typing import Optional
 
 from charms.tls_certificates_interface.v2.tls_certificates import (  # type: ignore[import]
@@ -97,10 +96,10 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self.unit.is_leader():
             return
         private_key_password = generate_password()
-        private_key = generate_private_key(password=private_key_password.encode())
+        private_key = generate_private_key(password=private_key_password)
         self.app.add_secret(
             content={
-                "private-key-password": private_key_password,
+                "private-key-password": private_key_password.decode(),
                 "private-key": private_key.decode(),
             },
             label=PRIVATE_KEY_SECRET_LABEL,
@@ -294,14 +293,13 @@ class TLSRequirerOperatorCharm(CharmBase):
             event.fail("Certificate not available")
 
 
-def generate_password() -> str:
-    """Generates a random 12 character password.
+def generate_password() -> bytes:
+    """Generates a random byte string containing 64 bytes.
 
     Returns:
         str: Password
     """
-    chars = string.ascii_letters + string.digits
-    return "".join(secrets.choice(chars) for _ in range(12))
+    return secrets.token_bytes(64)
 
 
 if __name__ == "__main__":

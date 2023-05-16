@@ -29,7 +29,7 @@ class TestCharm(unittest.TestCase):
         private_key_password = "whatever password"
         private_key = "whatever private key"
         patch_generate_private_key.return_value = private_key.encode()
-        patch_generate_password.return_value = private_key_password
+        patch_generate_password.return_value = private_key_password.encode()
         self.harness.charm.on.install.emit()
 
         secret = self.harness._backend.secret_get(label="private-key")
