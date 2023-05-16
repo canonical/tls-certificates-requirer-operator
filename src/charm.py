@@ -96,10 +96,10 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self.unit.is_leader():
             return
         private_key_password = generate_password()
-        private_key = generate_private_key(password=private_key_password)
+        private_key = generate_private_key(password=private_key_password.encode())
         self.app.add_secret(
             content={
-                "private-key-password": private_key_password.decode(),
+                "private-key-password": private_key_password,
                 "private-key": private_key.decode(),
             },
             label=PRIVATE_KEY_SECRET_LABEL,
@@ -293,13 +293,13 @@ class TLSRequirerOperatorCharm(CharmBase):
             event.fail("Certificate not available")
 
 
-def generate_password() -> bytes:
-    """Generates a random byte string containing 64 bytes.
+def generate_password() -> str:
+    """Generates a random string containing 64 bytes.
 
     Returns:
         str: Password
     """
-    return secrets.token_bytes(64)
+    return secrets.token_hex(64)
 
 
 if __name__ == "__main__":
