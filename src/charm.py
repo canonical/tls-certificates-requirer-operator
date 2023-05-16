@@ -84,9 +84,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             bool: Whether a given relation was created.
         """
         try:
-            if self.model.get_relation(relation_name):
-                return True
-            return False
+            return bool(self.model.get_relation(relation_name))
         except KeyError:
             return False
 
