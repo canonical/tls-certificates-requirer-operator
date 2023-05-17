@@ -21,6 +21,8 @@ jobs:
         uses: canonical/charming-actions/channel@2.2.5
         id: channel
       - name: Upload charm to Charmhub
-        env:
-          CHARMCRAFT_AUTH: "${{ secrets.CHARMCRAFT_AUTH }}"
-        run: charmcraft upload ./tls-certificates-requirer_ubuntu-22.04-amd64.charm --release ${{ steps.channel.outputs.name }}
+        uses: canonical/charming-actions/upload-charm@2.2.5
+        with:
+          credentials: "${{ secrets.CHARMCRAFT_AUTH }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          channel: "${{ steps.channel.outputs.name }}"
