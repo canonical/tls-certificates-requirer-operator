@@ -18,14 +18,14 @@ This charm is useful when developing and testing certificate providers.
 Deploy the charm and relate it to a certificate provider:
 
 ```bash
-juju deploy tls-requirer-operator
-juju relate tls-requirer-operator <TLS Certificates Provider>
+juju deploy tls-certificates-requirer
+juju relate tls-certificates-requirer <TLS Certificates Provider>
 ```
 
 Access the generated certificate:
 
 ```bash
-juju run tls-requirer-operator/leader get-certificate
+juju run tls-certificates-requirer/leader get-certificate
 ```
 
 ## Limitations
