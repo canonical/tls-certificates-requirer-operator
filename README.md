@@ -35,3 +35,8 @@ This charm doesn't scale up.
 ## Relations
 
 - `tls-certificates`: Used for charms that require/provide TLS certificates.
+
+## Get the issued certificate
+```bash
+juju run tls-requirer-operator/leader get-certificate
+```
