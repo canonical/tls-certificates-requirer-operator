@@ -294,10 +294,16 @@ class TestCharm(unittest.TestCase):
         certificate = "whatever certificate"
         ca = "whatever ca"
         chain = "whatever chain"
+        csr = "whatever csr"
         event = Mock()
         self.harness._backend.secret_add(
             label="certificate",
-            content={"certificate": certificate, "ca-certificate": ca, "chain": chain},
+            content={
+                "certificate": certificate,
+                "ca-certificate": ca,
+                "chain": chain,
+                "csr": csr,
+            },
         )
 
         self.harness.charm._on_get_certificate_action(event=event)
@@ -307,6 +313,7 @@ class TestCharm(unittest.TestCase):
                 "certificate": certificate,
                 "ca-certificate": ca,
                 "chain": chain,
+                "csr": "whatever csr",
             }
         )
 
