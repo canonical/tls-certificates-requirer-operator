@@ -285,6 +285,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             event.set_results(
                 {
                     "certificate": content["certificate"],
+                    "csr": content["csr"],
                     "ca-certificate": content["ca-certificate"],
                     "chain": content["chain"],
                 }
