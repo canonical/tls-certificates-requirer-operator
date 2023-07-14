@@ -287,6 +287,7 @@ class TLSRequirerOperatorCharm(CharmBase):
                     "certificate": content["certificate"],
                     "ca-certificate": content["ca-certificate"],
                     "chain": content["chain"],
+                    "csr": content["csr"],
                 }
             )
         else:
