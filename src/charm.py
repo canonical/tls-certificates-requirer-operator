@@ -286,7 +286,7 @@ class TLSRequirerOperatorCharm(CharmBase):
                 {
                     "certificate": content["certificate"],
                     "ca-certificate": content["ca-certificate"],
-                    "chain": content["chain"],
+                    "chain": json.loads(content["chain"]),
                     "csr": content["csr"],
                 }
             )
