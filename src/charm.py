@@ -204,7 +204,6 @@ class TLSRequirerOperatorCharm(CharmBase):
         signing request (CSR) and inserts it into the `certificates` relation unit relation data.
         """
         if not self._csr_is_stored:
-            self.unit.status = WaitingStatus("Waiting for CSR to be generated.")
             return
         csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
         csr_secret_content = csr_secret.get_content()
