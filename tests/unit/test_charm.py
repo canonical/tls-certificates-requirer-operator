@@ -86,20 +86,6 @@ class TestCharm(unittest.TestCase):
 
         patch_request_certificate.assert_called_with(certificate_signing_request=csr.encode())
 
-    @patch(
-        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
-    )
-    @patch("charm.generate_csr")
-    def test_given_csr_is_not_generated_and_certificate_relation_is_created_then_request_certificate_is_not_called(  # noqa: E501
-        self,
-        patch_generate_csr,
-        patch_request_certificate,
-    ):
-        self.harness.set_leader(is_leader=True)
-        patch_generate_csr.side_effect = RuntimeError("Private key not stored.")
-        self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
-        patch_request_certificate.assert_not_called()
-
     @patch("charm.generate_csr")
     def test_given_certificate_is_requested_when_on_config_changed_then_status_is_waiting(
         self,
@@ -348,3 +334,9 @@ class TestCharm(unittest.TestCase):
 
         with pytest.raises(SecretNotFoundError):
             self.harness._backend.secret_get(label="certificate")
+
+    def test_given_csr_is_not_stored_when_request_certificate_called_then_runtime_error_is_not_raised(  # noqa: E501
+        self,
+    ):
+        self.assertEqual(self.harness.charm._secret_exists(label="csr"), False)
+        self.harness.charm._request_certificate()
