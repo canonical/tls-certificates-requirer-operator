@@ -165,14 +165,18 @@ class TLSRequirerOperatorCharm(CharmBase):
             )
             event.defer()
             return
-        if self._certificates_relation_created:
+        if not self._csr_is_stored:
+            self._revoke_existing_certificates()
+            self._generate_csr()
+            self.unit.status = ActiveStatus()
+            return
+        elif self._certificates_relation_created:
             self._revoke_existing_certificates()
             self._generate_csr()
             self._request_certificate()
             self.unit.status = WaitingStatus("Waiting for certificate to be available")
         else:
-            self._generate_csr()
-            self.unit.status = ActiveStatus()
+            self.unit.status = WaitingStatus("Waiting for certificates relation to be created.")
 
     def _on_certificates_relation_joined(self, event: EventBase) -> None:
         """Validates config and requests a new certificate.
@@ -204,7 +208,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         signing request (CSR) and inserts it into the `certificates` relation unit relation data.
         """
         if not self._csr_is_stored:
-            return
+            raise RuntimeError("CSR is not stored")
         csr_secret = self.model.get_secret(label=CSR_SECRET_LABEL)
         csr_secret_content = csr_secret.get_content()
         self.certificates.request_certificate_creation(
