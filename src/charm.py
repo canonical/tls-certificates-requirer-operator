@@ -165,18 +165,21 @@ class TLSRequirerOperatorCharm(CharmBase):
             )
             event.defer()
             return
-        if not self._csr_is_stored:
-            self._revoke_existing_certificates()
-            self._generate_csr()
-            self.unit.status = ActiveStatus()
+        if not self._certificates_relation_created:
+            self.unit.status = BlockedStatus("Waiting for certificates relation to be created.")
+            event.defer()
             return
-        elif self._certificates_relation_created:
-            self._revoke_existing_certificates()
-            self._generate_csr()
-            self._request_certificate()
-            self.unit.status = WaitingStatus("Waiting for certificate to be available")
-        else:
-            self.unit.status = WaitingStatus("Waiting for certificates relation to be created.")
+
+        self._revoke_existing_certificates()
+        self._generate_csr()
+        if not self._csr_is_stored:
+            # This check is required because of a race condition.
+            # If _request_certificate is called and storing csr is still in process, RuntimeError happens.  # noqa: E501, W505
+            self.unit.status = WaitingStatus("Waiting csr to be stored.")
+            event.defer()
+            return
+        self._request_certificate()
+        self.unit.status = WaitingStatus("Waiting for certificate to be available.")
 
     def _on_certificates_relation_joined(self, event: EventBase) -> None:
         """Validates config and requests a new certificate.

@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from ops import testing
-from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
+from ops.model import BlockedStatus, SecretNotFoundError, WaitingStatus
 
 from charm import TLSRequirerOperatorCharm
 
@@ -74,7 +74,7 @@ class TestCharm(unittest.TestCase):
         "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
     )
     @patch("charm.generate_csr")
-    def test_given_private_key_and_csr_are_stored_certificate_relation_is_created_when_on_config_changed_then_certificate_is_requested(  # noqa: E501
+    def test_given_private_key_is_stored_certificate_relation_is_created_when_on_config_changed_then_certificate_is_requested(  # noqa: E501
         self,
         patch_generate_csr,
         patch_request_certificate,
@@ -82,18 +82,59 @@ class TestCharm(unittest.TestCase):
         self.harness.set_leader(is_leader=True)
         self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
         patch_generate_csr.return_value = CSR.encode()
-        self.harness._backend.secret_add(label="csr", content={"csr": CSR})
         self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
 
         self.harness.update_config(key_values={"subject": "banana.com"})
 
         patch_request_certificate.assert_called_with(certificate_signing_request=CSR.encode())
 
+    @patch("charm.generate_csr")
+    def test_given_certificate_relation_is_created_when_on_config_changed_then_csr_is_generated(  # noqa: E501
+        self,
+        patch_generate_csr,
+    ):
+        self.harness.set_leader(is_leader=True)
+        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
+        patch_generate_csr.return_value = CSR.encode()
+        self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
+        self.harness.update_config(key_values={"subject": "banana.com"})
+
+        secret = self.harness._backend.secret_get(label="csr")
+        assert secret["csr"] == CSR
+
+    @patch("charm.generate_csr")
+    def test_given_certificate_relation_is_not_created_when_on_config_changed_then_status_is_blocked(  # noqa: E501
+        self,
+        patch_generate_csr,
+    ):
+        self.harness.set_leader(is_leader=True)
+        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
+        patch_generate_csr.return_value = CSR.encode()
+
+        self.harness.update_config(key_values={"subject": "banana.com"})
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            BlockedStatus("Waiting for certificates relation to be created."),
+        )
+
+    @patch("charm.generate_csr")
+    def test_given_certificate_relation_is_not_created_when_on_config_changed_then_csr_is_not_generated(  # noqa: E501
+        self,
+        patch_generate_csr,
+    ):
+        self.harness.set_leader(is_leader=True)
+        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
+        patch_generate_csr.return_value = CSR.encode()
+
+        self.harness.update_config(key_values={"subject": "banana.com"})
+        self.assertEqual(False, self.harness.charm._csr_is_stored)
+
     @patch(
         "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
     )
     @patch("charm.generate_csr")
-    def test_given_private_key_is_stored_and_csr_is_not_stored_certificate_relation_is_created_when_on_config_changed_then_certificate_is_not_requested(  # noqa: E501
+    def test_given_private_key_is_stored_certificate_relation_is_not_created_when_on_config_changed_then_certificate_is_not_requested(  # noqa: E501
         self,
         patch_generate_csr,
         patch_request_certificate,
@@ -101,70 +142,9 @@ class TestCharm(unittest.TestCase):
         self.harness.set_leader(is_leader=True)
         self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
         patch_generate_csr.return_value = CSR.encode()
-        self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
-
         self.harness.update_config(key_values={"subject": "banana.com"})
 
         patch_request_certificate.assert_not_called()
-
-    @patch("charm.generate_csr")
-    def test_given_certificate_relation_is_not_created_csr_is_not_stored_when_on_config_changed_then_csr_is_generated(  # noqa: E501
-        self,
-        patch_generate_csr,
-    ):
-        self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
-        patch_generate_csr.return_value = CSR.encode()
-
-        self.harness.update_config(key_values={"subject": "banana.com"})
-
-        secret = self.harness._backend.secret_get(label="csr")
-        assert secret["csr"] == CSR
-
-    @patch("charm.generate_csr")
-    def test_given_certificate_relation_is_created_csr_is_not_stored_when_on_config_changed_then_csr_is_generated(  # noqa: E501
-        self,
-        patch_generate_csr,
-    ):
-        self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
-        patch_generate_csr.return_value = CSR.encode()
-        self.harness.add_relation(relation_name="certificates", remote_app="certificates-provider")
-        self.harness.update_config(key_values={"subject": "banana.com"})
-
-        secret = self.harness._backend.secret_get(label="csr")
-        assert secret["csr"] == CSR
-
-    @patch("charm.generate_csr")
-    def test_given_certificate_relation_is_not_created_and_csr_is_stored_when_on_config_changed_then_status_is_waiting(  # noqa: E501
-        self,
-        patch_generate_csr,
-    ):
-        self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
-        self.harness._backend.secret_add(label="csr", content={"csr": CSR})
-        patch_generate_csr.return_value = CSR.encode()
-        self.harness.update_config(key_values={"subject": "banana.com"})
-        self.assertEqual(
-            self.harness.model.unit.status,
-            WaitingStatus("Waiting for certificates relation to be created."),
-        )
-
-    @patch("charm.generate_csr")
-    def test_given_certificate_relation_is_not_created_csr_is_not_stored_when_on_config_changed_then_status_is_active(  # noqa: E501
-        self,
-        patch_generate_csr,
-    ):
-        self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(PRIVATE_KEY, PRIVATE_KEY_PASSWORD)
-        patch_generate_csr.return_value = CSR.encode()
-
-        self.harness.update_config(key_values={"subject": "banana.com"})
-
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ActiveStatus(),
-        )
 
     @patch(
         "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505

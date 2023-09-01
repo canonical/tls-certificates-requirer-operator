@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
+SELF_SIGNED_CERTIFICATES_CHARM_NAME = "self-signed-certificates"
 
 
 @pytest.fixture(scope="module")
@@ -29,10 +30,38 @@ async def build_and_deploy(ops_test):
 
 
 @pytest.mark.abort_on_fail
-async def test_given_charm_is_built_when_deployed_then_status_is_active(
+async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
     ops_test,
     build_and_deploy,
 ):
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME],
+        status="blocked",
+        timeout=1000,
+    )
+
+
+async def test_given_self_signed_certificates_is_deployed_and_related_then_status_is_active(  # noqa: E501
+    ops_test,
+    build_and_deploy,
+):
+    await ops_test.model.deploy(
+        SELF_SIGNED_CERTIFICATES_CHARM_NAME,
+        application_name=SELF_SIGNED_CERTIFICATES_CHARM_NAME,
+        channel="edge",
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[SELF_SIGNED_CERTIFICATES_CHARM_NAME],
+        status="active",
+        timeout=1000,
+    )
+    await ops_test.model.add_relation(
+        relation1=f"{SELF_SIGNED_CERTIFICATES_CHARM_NAME}:certificates", relation2=f"{APP_NAME}"
+    )
+    tls_requirer_unit = ops_test.model.units[f"{APP_NAME}/0"]
+    await tls_requirer_unit.run_action(
+        action_name="get-certificate",
+    )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
         status="active",
