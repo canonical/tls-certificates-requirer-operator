@@ -173,8 +173,8 @@ class TLSRequirerOperatorCharm(CharmBase):
         self._revoke_existing_certificates()
         self._generate_csr()
         if not self._csr_is_stored:
-            # This check is required because of a race condition.
-            # If _request_certificate is called and storing csr is still in process, RuntimeError happens.  # noqa: E501, W505
+            # This check is required because of a Juju bug: https://bugs.launchpad.net/juju/+bug/2034050  # noqa: E501, W505
+            # If _request_certificate is called and stored CSR could not be found, RuntimeError happens.  # noqa: E501, W505
             self.unit.status = WaitingStatus("Waiting csr to be stored.")
             event.defer()
             return
