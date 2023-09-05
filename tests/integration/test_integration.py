@@ -58,10 +58,6 @@ async def test_given_self_signed_certificates_is_deployed_and_related_then_statu
     await ops_test.model.add_relation(
         relation1=f"{SELF_SIGNED_CERTIFICATES_CHARM_NAME}:certificates", relation2=f"{APP_NAME}"
     )
-    tls_requirer_unit = ops_test.model.units[f"{APP_NAME}/0"]
-    await tls_requirer_unit.run_action(
-        action_name="get-certificate",
-    )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
         status="active",
