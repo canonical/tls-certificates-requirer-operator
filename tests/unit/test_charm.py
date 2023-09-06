@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from ops import testing
-from ops.model import BlockedStatus, SecretNotFoundError, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
 
 from charm import TLSRequirerOperatorCharm
 
@@ -228,6 +228,26 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(
             secret["csr"],
             CSR,
+        )
+
+    def test_given_csrs_match_when_on_certificate_available_then_status_is_active(self):
+        certificate = "whatever certificate"
+        ca = "whatever ca"
+        chain = ["whatever cert 1", "whatever cert 2"]
+        self.harness.set_leader(is_leader=True)
+        self.harness._backend.secret_add(label="csr", content={"csr": CSR})
+
+        self.harness.charm._on_certificate_available(
+            event=Mock(
+                certificate=certificate,
+                ca=ca,
+                chain=chain,
+                certificate_signing_request=CSR,
+            )
+        )
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ActiveStatus(),
         )
 
     def test_given_certificate_already_stored_when_on_certificate_available_then_certificate_is_overwritten(  # noqa: E501
