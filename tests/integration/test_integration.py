@@ -42,7 +42,7 @@ async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
     )
 
 
-async def test_given_self_signed_certificates_is_deployed_and_related_then_status_is_active(  # noqa: E501
+async def test_given_self_signed_certificates_is_related_when_deployed_then_status_is_active(  # noqa: E501
     ops_test: OpsTest,
     build_and_deploy,
 ):
