@@ -165,14 +165,15 @@ class TLSRequirerOperatorCharm(CharmBase):
             )
             event.defer()
             return
-        if self._certificates_relation_created:
-            self._revoke_existing_certificates()
-            self._generate_csr()
-            self._request_certificate()
-            self.unit.status = WaitingStatus("Waiting for certificate to be available")
-        else:
-            self._generate_csr()
-            self.unit.status = ActiveStatus()
+        if not self._certificates_relation_created:
+            self.unit.status = BlockedStatus("Waiting for certificates relation to be created.")
+            event.defer()
+            return
+
+        self._revoke_existing_certificates()
+        self._generate_csr()
+        self._request_certificate()
+        self.unit.status = WaitingStatus("Waiting for certificate to be available.")
 
     def _on_certificates_relation_joined(self, event: EventBase) -> None:
         """Validates config and requests a new certificate.
