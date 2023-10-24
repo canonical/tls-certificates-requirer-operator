@@ -27,6 +27,7 @@ async def build_and_deploy(ops_test: OpsTest):
         application_name=APP_NAME,
         series="jammy",
         trust=True,
+        num_units=3,
     )
 
 
