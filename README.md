@@ -28,10 +28,6 @@ Access the generated certificate:
 juju run tls-certificates-requirer/leader get-certificate
 ```
 
-## Limitations
-
-This charm doesn't scale up.
-
 ## Relations
 
 - `tls-certificates`: Used for charms that require/provide TLS certificates.
