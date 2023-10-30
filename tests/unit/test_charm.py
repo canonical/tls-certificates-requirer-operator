@@ -62,9 +62,8 @@ class TestCharm(unittest.TestCase):
     ):
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(
-            label="private-key-0",
-            content={"private-key": PRIVATE_KEY, "private-key-password": PRIVATE_KEY_PASSWORD},
+        self.add_secret_for_private_key(
+            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
         )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -84,9 +83,8 @@ class TestCharm(unittest.TestCase):
     ):
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(
-            label="private-key-0",
-            content={"private-key": PRIVATE_KEY, "private-key-password": PRIVATE_KEY_PASSWORD},
+        self.add_secret_for_private_key(
+            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
         )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -233,3 +231,60 @@ class TestCharm(unittest.TestCase):
 
         with pytest.raises(SecretNotFoundError):
             self.harness._backend.secret_get(label="certificate-0")
+
+    @patch("charm.generate_csr")
+    def test_given_csr_stored_when_relation_joined_then_csr_not_generated_again(
+        self, patch_generate_csr
+    ):
+        self.harness.set_leader(is_leader=True)
+        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
+        self.add_secret_for_private_key(
+            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        )
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        self.assertEqual(self.harness._backend.secret_get(label="csr-0")["csr"], CSR)
+        patch_generate_csr.assert_not_called()
+
+    @patch(
+        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+    )
+    def test_given_certificate_stored_when_relation_joined_then_certificate_not_requested_again(
+        self,
+        patch_request_certificate_creation,
+    ):
+        self.harness.set_leader(is_leader=True)
+        chain = ["whatever cert 1", "whatever cert 2"]
+        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
+
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.charm._on_certificate_available(
+            event=Mock(
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=chain,
+                certificate_signing_request=CSR,
+            )
+        )
+        self.add_secret_for_private_key(
+            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ActiveStatus("Certificate is available"),
+        )
+        patch_request_certificate_creation.assert_not_called()

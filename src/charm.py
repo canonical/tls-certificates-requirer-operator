@@ -126,9 +126,11 @@ class TLSRequirerOperatorCharm(CharmBase):
         Args:
             event: Juju event.
         """
-        self._generate_csr(common_name=self._get_unit_common_name())
-        self._request_certificate()
-        self.unit.status = ActiveStatus("Certificate request is sent")
+        if not self._csr_is_stored:
+            self._generate_csr(common_name=self._get_unit_common_name())
+        if not self._certificate_is_stored:
+            self._request_certificate()
+            self.unit.status = ActiveStatus("Certificate request is sent")
 
     def _get_unit_common_name(self) -> str:
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
@@ -168,11 +170,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             subject=common_name,
         )
         csr_secret_content = {"csr": csr.decode()}
-        if self._csr_is_stored:
-            csr_secret = self.model.get_secret(label=self._get_csr_secret_label())
-            csr_secret.set_content(content=csr_secret_content)
-        else:
-            self.unit.add_secret(content=csr_secret_content, label=self._get_csr_secret_label())
+        self.unit.add_secret(content=csr_secret_content, label=self._get_csr_secret_label())
 
     @property
     def _private_key_is_stored(self) -> bool:
