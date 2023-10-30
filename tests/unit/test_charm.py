@@ -260,20 +260,23 @@ class TestCharm(unittest.TestCase):
         patch_request_certificate_creation,
     ):
         self.harness.set_leader(is_leader=True)
+        chain = ["whatever cert 1", "whatever cert 2"]
         self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
-        self.harness._backend.secret_add(
-            label="certificate-0",
-            content={
-                "certificate": "whatever",
-                "ca-certificate": CA,
-                "chain": "whatever chain",
-            },
+
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.charm._on_certificate_available(
+            event=Mock(
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=chain,
+                certificate_signing_request=CSR,
+            )
         )
         self.add_secret_for_private_key(
             private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
-        )
-        relation_id = self.harness.add_relation(
-            relation_name="certificates", remote_app="certificates-provider"
         )
 
         self.harness.add_relation_unit(

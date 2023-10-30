@@ -131,8 +131,6 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self._certificate_is_stored:
             self._request_certificate()
             self.unit.status = ActiveStatus("Certificate request is sent")
-        else:
-            self.unit.status = ActiveStatus("Certificate is available")
 
     def _get_unit_common_name(self) -> str:
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
