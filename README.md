@@ -1,4 +1,5 @@
-# TLS Requirer Operator
+# TLS Certificates Requirer Operator
+[![CharmHub Badge](https://charmhub.io/tls-certificates-requirer/badge.svg)](https://charmhub.io/tls-certificates-requirer)
 
 Charm that requests X.509 certificates using the `tls-certificates` interface.
 
