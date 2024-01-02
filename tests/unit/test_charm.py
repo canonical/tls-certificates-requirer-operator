@@ -25,14 +25,20 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    def add_secret_for_private_key(self, private_key: str, private_key_password: str) -> None:
-        self.harness._backend.secret_add(
-            label="private-key-0",
-            content={
-                "private-key": private_key,
-                "private-key-password": private_key_password,
-            },
+    def _add_model_secret(self, owner: str, content: dict, label: str) -> None:
+        """Adds a secret to the model.
+
+        Args:
+            owner: Secret owner.
+            content: Secret content.
+            label: Secret label.
+        """
+        secret_id = self.harness.add_model_secret(
+            owner=owner,
+            content=content,
         )
+        secret = self.harness.model.get_secret(id=secret_id)
+        secret.set_info(label=label)
 
     @patch("charm.generate_password")
     @patch("charm.generate_private_key")
@@ -62,8 +68,13 @@ class TestCharm(unittest.TestCase):
     ):
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(
-            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
         )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -83,8 +94,13 @@ class TestCharm(unittest.TestCase):
     ):
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self.add_secret_for_private_key(
-            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
         )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -102,7 +118,11 @@ class TestCharm(unittest.TestCase):
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(self):
         chain = ["whatever cert 1", "whatever cert 2"]
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": CSR},
+            label="csr-0",
+        )
 
         self.harness.charm._on_certificate_available(
             event=Mock(
@@ -128,7 +148,11 @@ class TestCharm(unittest.TestCase):
     def test_given_csrs_match_when_on_certificate_available_then_status_is_active(self):
         chain = ["whatever cert 1", "whatever cert 2"]
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": CSR},
+            label="csr-0",
+        )
 
         self.harness.charm._on_certificate_available(
             event=Mock(
@@ -148,16 +172,22 @@ class TestCharm(unittest.TestCase):
     ):
         chain = ["whatever cert 1", "whatever cert 2"]
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
-        self.harness._backend.secret_add(
-            label="certificate-0",
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "csr": CSR,
+            },
+            label="csr-0",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
             content={
                 "certificate": "old certificate",
                 "ca-certificate": "old ca certificate",
                 "chain": "old chain",
             },
+            label="certificate-0",
         )
-
         self.harness.charm._on_certificate_available(
             event=Mock(
                 certificate=CERTIFICATE,
@@ -167,15 +197,17 @@ class TestCharm(unittest.TestCase):
             )
         )
 
-        secret = self.harness._backend.secret_get(label="certificate-0")
-        self.assertEqual(secret["certificate"], CERTIFICATE)
-        self.assertEqual(secret["ca-certificate"], CA)
+        secret_content = self.harness.model.get_secret(label="certificate-0").get_content(
+            refresh=True
+        )
+        self.assertEqual(secret_content["certificate"], CERTIFICATE)
+        self.assertEqual(secret_content["ca-certificate"], CA)
         self.assertEqual(
-            secret["chain"],
+            secret_content["chain"],
             json.dumps(chain),
         )
         self.assertEqual(
-            secret["csr"],
+            secret_content["csr"],
             CSR,
         )
 
@@ -193,14 +225,15 @@ class TestCharm(unittest.TestCase):
         self.harness.set_leader(is_leader=True)
         chain = ["whatever chain"]
         event = Mock()
-        self.harness._backend.secret_add(
-            label="certificate-0",
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
             content={
                 "certificate": CERTIFICATE,
                 "ca-certificate": CA,
                 "chain": json.dumps(chain),
                 "csr": CSR,
             },
+            label="certificate-0",
         )
 
         self.harness.charm._on_get_certificate_action(event=event)
@@ -218,13 +251,14 @@ class TestCharm(unittest.TestCase):
         self,
     ):
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(
-            label="certificate-0",
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
             content={
                 "certificate": "whatever",
                 "ca-certificate": CA,
                 "chain": "whatever chain",
             },
+            label="certificate-0",
         )
 
         self.harness.charm._on_certificates_relation_broken(event=Mock())
@@ -237,9 +271,18 @@ class TestCharm(unittest.TestCase):
         self, patch_generate_csr
     ):
         self.harness.set_leader(is_leader=True)
-        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
-        self.add_secret_for_private_key(
-            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": CSR},
+            label="csr-0",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
         )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -261,7 +304,11 @@ class TestCharm(unittest.TestCase):
     ):
         self.harness.set_leader(is_leader=True)
         chain = ["whatever cert 1", "whatever cert 2"]
-        self.harness._backend.secret_add(label="csr-0", content={"csr": CSR})
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": CSR},
+            label="csr-0",
+        )
 
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -275,8 +322,13 @@ class TestCharm(unittest.TestCase):
                 certificate_signing_request=CSR,
             )
         )
-        self.add_secret_for_private_key(
-            private_key=PRIVATE_KEY, private_key_password=PRIVATE_KEY_PASSWORD
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
         )
 
         self.harness.add_relation_unit(
