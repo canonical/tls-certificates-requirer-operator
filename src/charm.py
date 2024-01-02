@@ -99,7 +99,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             event: Juju Event
         """
         csr_secret = self.model.get_secret(label=self._get_csr_secret_label())
-        csr_secret_content = csr_secret.get_content(refresh=True)
+        csr_secret_content = csr_secret.get_content()
         if csr_secret_content["csr"].strip() != event.certificate_signing_request:
             logger.info("New certificate CSR doesn't match with the one stored.")
             return
@@ -139,7 +139,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self._csr_is_stored:
             return
         secret = self.model.get_secret(label=self._get_csr_secret_label())
-        secret_content = secret.get_content(refresh=True)
+        secret_content = secret.get_content()
         self.certificates.request_certificate_revocation(
             certificate_signing_request=secret_content["csr"].encode()
         )
@@ -153,7 +153,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self._csr_is_stored:
             raise RuntimeError("CSR is not stored")
         csr_secret = self.model.get_secret(label=self._get_csr_secret_label())
-        csr_secret_content = csr_secret.get_content(refresh=True)
+        csr_secret_content = csr_secret.get_content()
         self.certificates.request_certificate_creation(
             certificate_signing_request=csr_secret_content["csr"].encode()
         )
@@ -163,7 +163,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         if not self._private_key_is_stored:
             raise RuntimeError("Private key not stored.")
         private_key_secret = self.model.get_secret(label=self._get_private_key_secret_label())
-        private_key_secret_content = private_key_secret.get_content(refresh=True)
+        private_key_secret_content = private_key_secret.get_content()
         csr = generate_csr(
             private_key=private_key_secret_content["private-key"].encode(),
             private_key_password=private_key_secret_content["private-key-password"].encode(),
@@ -222,7 +222,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         """
         if self._certificate_is_stored:
             secret = self.model.get_secret(label=self._get_certificate_secret_label())
-            content = secret.get_content(refresh=True)
+            content = secret.get_content()
             event.set_results(
                 {
                     "certificate": content["certificate"],
