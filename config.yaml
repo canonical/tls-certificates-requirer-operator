@@ -1,0 +1,5 @@
+options:
+  common_name:
+    type: string
+    description: |
+      Common name to be used in the certificate. If not set, the common name will be <app name>-<unit number>.<model name>
