@@ -4,7 +4,6 @@
 
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
-import json
 import logging
 import secrets
 

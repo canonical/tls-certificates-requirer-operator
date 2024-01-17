@@ -1,7 +1,6 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -258,7 +257,6 @@ class TestCharm(unittest.TestCase):
         self,
     ):
         self.harness.set_leader(is_leader=True)
-        chain = ["whatever chain"]
         event = Mock()
         self._add_model_secret(
             owner=self.harness.model.unit.name,
