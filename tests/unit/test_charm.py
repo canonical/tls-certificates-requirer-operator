@@ -1,7 +1,6 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -181,10 +180,6 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(secret["certificate"], CERTIFICATE)
         self.assertEqual(secret["ca-certificate"], CA)
         self.assertEqual(
-            secret["chain"],
-            json.dumps(chain),
-        )
-        self.assertEqual(
             secret["csr"],
             CSR,
         )
@@ -228,7 +223,6 @@ class TestCharm(unittest.TestCase):
             content={
                 "certificate": "old certificate",
                 "ca-certificate": "old ca certificate",
-                "chain": "old chain",
             },
             label="certificate-0",
         )
@@ -247,10 +241,6 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(secret_content["certificate"], CERTIFICATE)
         self.assertEqual(secret_content["ca-certificate"], CA)
         self.assertEqual(
-            secret_content["chain"],
-            json.dumps(chain),
-        )
-        self.assertEqual(
             secret_content["csr"],
             CSR,
         )
@@ -267,14 +257,12 @@ class TestCharm(unittest.TestCase):
         self,
     ):
         self.harness.set_leader(is_leader=True)
-        chain = ["whatever chain"]
         event = Mock()
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
                 "certificate": CERTIFICATE,
                 "ca-certificate": CA,
-                "chain": json.dumps(chain),
                 "csr": CSR,
             },
             label="certificate-0",
@@ -286,7 +274,6 @@ class TestCharm(unittest.TestCase):
             {
                 "certificate": CERTIFICATE,
                 "ca-certificate": CA,
-                "chain": chain,
                 "csr": CSR,
             }
         )
@@ -300,7 +287,6 @@ class TestCharm(unittest.TestCase):
             content={
                 "certificate": "whatever",
                 "ca-certificate": CA,
-                "chain": "whatever chain",
             },
             label="certificate-0",
         )

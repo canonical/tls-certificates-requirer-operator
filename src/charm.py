@@ -4,7 +4,6 @@
 
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
-import json
 import logging
 import secrets
 
@@ -106,7 +105,6 @@ class TLSRequirerOperatorCharm(CharmBase):
         certificate_secret_content = {
             "certificate": event.certificate,
             "ca-certificate": event.ca,
-            "chain": json.dumps(event.chain),
             "csr": event.certificate_signing_request,
         }
         if self._certificate_is_stored:
@@ -235,7 +233,6 @@ class TLSRequirerOperatorCharm(CharmBase):
                 {
                     "certificate": content["certificate"],
                     "ca-certificate": content["ca-certificate"],
-                    "chain": json.loads(content["chain"]),
                     "csr": content["csr"],
                 }
             )

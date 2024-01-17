@@ -105,5 +105,4 @@ async def test_given_self_signed_certificates_is_related_when_get_certificate_ac
 
         assert action_output["certificate"] is not None
         assert action_output["ca-certificate"] is not None
-        assert action_output["chain"] is not None
         assert action_output["csr"] is not None
