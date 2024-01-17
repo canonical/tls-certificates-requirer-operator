@@ -99,9 +99,9 @@ class TestCharm(unittest.TestCase):
     @patch(
         "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
     )
-    def test_given_common_name_config_is_set_when_certificates_relation_joined_then_certificate_is_requested(  # noqa: E501
+    def test_given_common_name_config_is_set_when_certificates_relation_joined_then_certificate_is_requested_with_common_name(  # noqa: E501
         self,
-        _,
+        patch_request_certificate_creation,
         patch_generate_csr,
     ):
         self.harness.update_config({"common_name": SUBJECT})
@@ -127,6 +127,9 @@ class TestCharm(unittest.TestCase):
             private_key=PRIVATE_KEY.encode(),
             private_key_password=PRIVATE_KEY_PASSWORD.encode(),
             subject=SUBJECT,
+        )
+        patch_request_certificate_creation.assert_called_with(
+            certificate_signing_request=CSR.encode()
         )
 
     @patch("charm.generate_csr")
