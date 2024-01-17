@@ -21,8 +21,10 @@ CERTIFICATE = "whatever certificate"
 
 class TestCharm(unittest.TestCase):
     def setUp(self):
+        self.model_name = "whatever"
         self.harness = testing.Harness(TLSRequirerOperatorCharm)
         self.addCleanup(self.harness.cleanup)
+        self.harness.set_model_name(self.model_name)
         self.harness.begin()
 
     def _add_model_secret(self, owner: str, content: dict, label: str) -> None:
@@ -83,7 +85,49 @@ class TestCharm(unittest.TestCase):
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
+        unit_number = self.harness.model.unit.name.split("/")[1]
+        patch_generate_csr.assert_called_with(
+            private_key=PRIVATE_KEY.encode(),
+            private_key_password=PRIVATE_KEY_PASSWORD.encode(),
+            subject=f"{self.harness.charm.app.name}-{unit_number}.{self.harness.model.name}",
+        )
+        patch_request_certificate_creation.assert_called_with(
+            certificate_signing_request=CSR.encode()
+        )
 
+    @patch("charm.generate_csr")
+    @patch(
+        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+    )
+    def test_given_common_name_config_is_set_when_certificates_relation_joined_then_certificate_is_requested_with_common_name(  # noqa: E501
+        self,
+        patch_request_certificate_creation,
+        patch_generate_csr,
+    ):
+        self.harness.update_config({"common_name": SUBJECT})
+        patch_generate_csr.return_value = CSR.encode()
+        self.harness.set_leader(is_leader=True)
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
+        )
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        patch_generate_csr.assert_called_with(
+            private_key=PRIVATE_KEY.encode(),
+            private_key_password=PRIVATE_KEY_PASSWORD.encode(),
+            subject=SUBJECT,
+        )
         patch_request_certificate_creation.assert_called_with(
             certificate_signing_request=CSR.encode()
         )

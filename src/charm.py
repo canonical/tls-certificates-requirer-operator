@@ -133,6 +133,14 @@ class TLSRequirerOperatorCharm(CharmBase):
             self.unit.status = ActiveStatus("Certificate request is sent")
 
     def _get_unit_common_name(self) -> str:
+        """Returns common name for the unit.
+
+        If `common_name` config option is set, it will be used as a common name.
+        Otherwise, the common name will be generated based on the application name and unit number.
+        """
+        config_common_name = self.model.config.get("common_name")
+        if config_common_name:
+            return config_common_name
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
 
     def _revoke_existing_certificates(self) -> None:
