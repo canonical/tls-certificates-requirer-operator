@@ -18,6 +18,7 @@ description: |
 website: https://charmhub.io/tls-certificates-requirer
 source: https://github.com/canonical/tls-certificates-requirer-operator
 issues: https://github.com/canonical/tls-certificates-requirer-operator/issues
+docs: https://discourse.charmhub.io/t/tls-certificates-requirer/12977
 
 requires:
   certificates:
