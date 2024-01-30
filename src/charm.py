@@ -7,9 +7,9 @@
 import logging
 import secrets
 
-from charms.tls_certificates_interface.v2.tls_certificates import (  # type: ignore[import]
+from charms.tls_certificates_interface.v3.tls_certificates import (  # type: ignore[import]
     CertificateAvailableEvent,
-    TLSCertificatesRequiresV2,
+    TLSCertificatesRequiresV3,
     generate_csr,
     generate_private_key,
 )
@@ -26,7 +26,7 @@ class TLSRequirerOperatorCharm(CharmBase):
     def __init__(self, *args):
         """Handles events for certificate management."""
         super().__init__(*args)
-        self.certificates = TLSCertificatesRequiresV2(self, "certificates")
+        self.certificates = TLSCertificatesRequiresV3(self, "certificates")
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(
             self.on.certificates_relation_joined, self._on_certificates_relation_joined
