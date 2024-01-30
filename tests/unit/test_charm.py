@@ -60,7 +60,7 @@ class TestCharm(unittest.TestCase):
 
     @patch("charm.generate_csr")
     @patch(
-        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
     def test_given_private_key_is_stored_when_certificates_relation_joined_then_certificate_is_requested(  # noqa: E501
         self,
@@ -96,7 +96,7 @@ class TestCharm(unittest.TestCase):
 
     @patch("charm.generate_csr")
     @patch(
-        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
     def test_given_common_name_config_is_set_when_certificates_relation_joined_then_certificate_is_requested_with_common_name(  # noqa: E501
         self,
@@ -326,7 +326,7 @@ class TestCharm(unittest.TestCase):
         patch_generate_csr.assert_not_called()
 
     @patch(
-        "charms.tls_certificates_interface.v2.tls_certificates.TLSCertificatesRequiresV2.request_certificate_creation"  # noqa: E501, W505
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
     def test_given_certificate_stored_when_relation_joined_then_certificate_not_requested_again(
         self,
