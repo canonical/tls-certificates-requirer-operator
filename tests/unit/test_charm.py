@@ -5,10 +5,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 import pytest
+from charm import TLSRequirerOperatorCharm
 from ops import testing
 from ops.model import ActiveStatus, SecretNotFoundError
-
-from charm import TLSRequirerOperatorCharm
 
 PRIVATE_KEY = "whatever private key"
 PRIVATE_KEY_PASSWORD = "whatever password"
@@ -27,7 +26,7 @@ class TestCharm(unittest.TestCase):
         self.harness.begin()
 
     def _add_model_secret(self, owner: str, content: dict, label: str) -> None:
-        """Adds a secret to the model.
+        """Add a secret to the model.
 
         Args:
             owner: Secret owner.
