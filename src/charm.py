@@ -7,13 +7,14 @@
 import logging
 import secrets
 
-from charms.tls_certificates_interface.v3.tls_certificates import (  # type: ignore[import]
+from charms.tls_certificates_interface.v3.tls_certificates import (
     CertificateAvailableEvent,
     TLSCertificatesRequiresV3,
     generate_csr,
     generate_private_key,
 )
-from ops.charm import ActionEvent, CharmBase, EventBase, InstallEvent, RelationBrokenEvent
+from ops.charm import ActionEvent, CharmBase, InstallEvent, RelationBrokenEvent
+from ops.framework import EventBase
 from ops.main import main
 from ops.model import ActiveStatus, SecretNotFoundError
 
@@ -24,7 +25,7 @@ class TLSRequirerOperatorCharm(CharmBase):
     """TLS Requirer Operator Charm."""
 
     def __init__(self, *args):
-        """Handles events for certificate management."""
+        """Handle events for certificate management."""
         super().__init__(*args)
         self.certificates = TLSCertificatesRequiresV3(self, "certificates")
         self.framework.observe(self.on.install, self._on_install)
@@ -50,7 +51,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         return self._relation_created("certificates")
 
     def _relation_created(self, relation_name: str) -> bool:
-        """Returns whether given relation was created.
+        """Return whether given relation was created.
 
         Args:
             relation_name (str): Relation name
@@ -64,7 +65,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             return False
 
     def _on_install(self, event: InstallEvent) -> None:
-        """Generates password and private key and stores them in a Juju secret.
+        """Generate password and private key and stores them in a Juju secret.
 
         Args:
             event: Juju event.
@@ -82,7 +83,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _on_certificates_relation_broken(self, event: RelationBrokenEvent) -> None:
-        """Removes Certificate from juju secret.
+        """Remove Certificate from juju secret.
 
         Args:
             event: Juju event.
@@ -92,7 +93,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             certificate_secret.remove_all_revisions()
 
     def _on_certificate_available(self, event: CertificateAvailableEvent) -> None:
-        """Stores the certificate in a Juju secret.
+        """Store the certificate in a Juju secret.
 
         Args:
             event: Juju Event
@@ -119,7 +120,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus("Certificate is available")
 
     def _on_certificates_relation_joined(self, event: EventBase) -> None:
-        """Validates config and requests a new certificate.
+        """Validate config and requests a new certificate.
 
         Args:
             event: Juju event.
@@ -131,7 +132,7 @@ class TLSRequirerOperatorCharm(CharmBase):
             self.unit.status = ActiveStatus("Certificate request is sent")
 
     def _get_unit_common_name(self) -> str:
-        """Returns common name for the unit.
+        """Return common name for the unit.
 
         If `common_name` config option is set, it will be used as a common name.
         Otherwise, the common name will be generated based on the application name and unit number.
@@ -151,7 +152,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         )
 
     def _request_certificate(self) -> None:
-        """Requests X.509 certificate.
+        """Request X.509 certificate.
 
         Retrieves private key and password from Juju secret, generates a certificate
         signing request (CSR) and inserts it into the `certificates` relation unit relation data.
@@ -165,7 +166,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         )
 
     def _generate_csr(self, common_name: str) -> None:
-        """Generates CSR based on private key and stores it in Juju secret."""
+        """Generate CSR based on private key and stores it in Juju secret."""
         if not self._private_key_is_stored:
             raise RuntimeError("Private key not stored.")
         private_key_secret = self.model.get_secret(label=self._get_private_key_secret_label())
@@ -198,7 +199,7 @@ class TLSRequirerOperatorCharm(CharmBase):
 
     @property
     def _certificate_is_stored(self) -> bool:
-        """Returns whether certificate is available in Juju secret.
+        """Return whether certificate is available in Juju secret.
 
         Returns:
             bool: Whether certificate is stored
@@ -206,7 +207,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         return self._secret_exists(label=self._get_certificate_secret_label())
 
     def _secret_exists(self, label: str) -> bool:
-        """Returns whether a given secret exists.
+        """Return whether a given secret exists.
 
         Args:
             label: Juju secret label
@@ -253,7 +254,7 @@ class TLSRequirerOperatorCharm(CharmBase):
 
 
 def generate_password() -> str:
-    """Generates a random string containing 64 bytes.
+    """Generate a random string containing 64 bytes.
 
     Returns:
         str: Password

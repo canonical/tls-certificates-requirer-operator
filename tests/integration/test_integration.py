@@ -36,7 +36,7 @@ async def build_and_deploy(ops_test: OpsTest):
 
 
 async def wait_for_certificate_available(ops_test: OpsTest, unit_name: str) -> dict:
-    """Runs the `get-certificate` action until it returns a certificate.
+    """Run the `get-certificate` action until it returns a certificate.
 
     If the action does not return a certificate within 60 seconds, a TimeoutError is raised.
     """
