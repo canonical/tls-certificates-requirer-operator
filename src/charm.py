@@ -7,7 +7,7 @@
 import logging
 import secrets
 
-from charms.tls_certificates_interface.v3.tls_certificates import (  # type: ignore[import]
+from charms.tls_certificates_interface.v3.tls_certificates import (
     CertificateAvailableEvent,
     TLSCertificatesRequiresV3,
     generate_csr,
