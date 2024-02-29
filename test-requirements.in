@@ -1,14 +1,15 @@
 black
+codespell
 coverage[toml]
 flake8-docstrings
 flake8-builtins
-isort
 juju>=3.1.6
 mypy
 pep8-naming
 pyproject-flake8
 pytest
 pytest-operator
+ruff
 types-PyYAML
 types-setuptools
 types-toml
