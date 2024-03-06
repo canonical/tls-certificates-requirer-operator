@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import pytest
-from charm import TLSRequirerOperatorCharm
+from charm import TLSRequirerCharm
 from ops import testing
 from ops.model import ActiveStatus, SecretNotFoundError
 
@@ -20,7 +20,7 @@ CERTIFICATE = "whatever certificate"
 class TestCharm(unittest.TestCase):
     def setUp(self):
         self.model_name = "whatever"
-        self.harness = testing.Harness(TLSRequirerOperatorCharm)
+        self.harness = testing.Harness(TLSRequirerCharm)
         self.addCleanup(self.harness.cleanup)
         self.harness.set_model_name(self.model_name)
         self.harness.begin()
@@ -40,16 +40,29 @@ class TestCharm(unittest.TestCase):
         secret = self.harness.model.get_secret(id=secret_id)
         secret.set_info(label=label)
 
+    def _store_private_key(self):
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": PRIVATE_KEY,
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
+        )
+
+    @patch("charm.generate_csr")
     @patch("charm.generate_password")
     @patch("charm.generate_private_key")
-    def test_given_unit_is_leader_when_on_install_then_private_key_is_generated(
+    def test_given_when_on_install_then_private_key_is_generated(
         self,
         patch_generate_private_key,
         patch_generate_password,
+        patch_generate_csr,
     ):
-        self.harness.set_leader(is_leader=True)
         patch_generate_private_key.return_value = PRIVATE_KEY.encode()
         patch_generate_password.return_value = PRIVATE_KEY_PASSWORD
+        patch_generate_csr.return_value = CSR.encode()
+
         self.harness.charm.on.install.emit()
 
         secret = self.harness._backend.secret_get(label="private-key-0")
@@ -68,14 +81,7 @@ class TestCharm(unittest.TestCase):
     ):
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self._add_model_secret(
-            owner=self.harness.model.unit.name,
-            content={
-                "private-key": PRIVATE_KEY,
-                "private-key-password": PRIVATE_KEY_PASSWORD,
-            },
-            label="private-key-0",
-        )
+        self._store_private_key()
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -105,14 +111,7 @@ class TestCharm(unittest.TestCase):
         self.harness.update_config({"common_name": SUBJECT})
         patch_generate_csr.return_value = CSR.encode()
         self.harness.set_leader(is_leader=True)
-        self._add_model_secret(
-            owner=self.harness.model.unit.name,
-            content={
-                "private-key": PRIVATE_KEY,
-                "private-key-password": PRIVATE_KEY_PASSWORD,
-            },
-            label="private-key-0",
-        )
+        self._store_private_key()
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -131,19 +130,11 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch("charm.generate_csr")
-    def test_given_private_key_is_stored_when_certificates_relation_joined_then_status_is_waiting(
+    def test_given_private_key_is_stored_when_certificates_relation_joined_then_status_is_active(
         self, patch_generate_csr
     ):
         patch_generate_csr.return_value = CSR.encode()
-        self.harness.set_leader(is_leader=True)
-        self._add_model_secret(
-            owner=self.harness.model.unit.name,
-            content={
-                "private-key": PRIVATE_KEY,
-                "private-key-password": PRIVATE_KEY_PASSWORD,
-            },
-            label="private-key-0",
-        )
+        self._store_private_key()
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -151,6 +142,7 @@ class TestCharm(unittest.TestCase):
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
+        self.harness.evaluate_status()
 
         self.assertEqual(
             self.harness.model.unit.status,
@@ -159,7 +151,6 @@ class TestCharm(unittest.TestCase):
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(self):
         chain = ["whatever cert 1", "whatever cert 2"]
-        self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": CSR},
@@ -185,11 +176,18 @@ class TestCharm(unittest.TestCase):
 
     def test_given_csrs_match_when_on_certificate_available_then_status_is_active(self):
         chain = ["whatever cert 1", "whatever cert 2"]
-        self.harness.set_leader(is_leader=True)
+        self._store_private_key()
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": CSR},
             label="csr-0",
+        )
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
         self.harness.charm._on_certificate_available(
@@ -200,6 +198,8 @@ class TestCharm(unittest.TestCase):
                 certificate_signing_request=CSR,
             )
         )
+        self.harness.evaluate_status()
+
         self.assertEqual(
             self.harness.model.unit.status,
             ActiveStatus("Certificate is available"),
@@ -363,6 +363,7 @@ class TestCharm(unittest.TestCase):
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
+        self.harness.evaluate_status()
 
         self.assertEqual(
             self.harness.model.unit.status,
