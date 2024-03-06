@@ -13,24 +13,26 @@ from charms.tls_certificates_interface.v3.tls_certificates import (
     generate_csr,
     generate_private_key,
 )
-from ops.charm import ActionEvent, CharmBase, InstallEvent, RelationBrokenEvent
+from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
 from ops.framework import EventBase
 from ops.main import main
-from ops.model import ActiveStatus, SecretNotFoundError
+from ops.model import ActiveStatus, SecretNotFoundError, WaitingStatus
 
 logger = logging.getLogger(__name__)
 
 
-class TLSRequirerOperatorCharm(CharmBase):
-    """TLS Requirer Operator Charm."""
+class TLSRequirerCharm(CharmBase):
+    """TLS Requirer Charm."""
 
     def __init__(self, *args):
         """Handle events for certificate management."""
         super().__init__(*args)
         self.certificates = TLSCertificatesRequiresV3(self, "certificates")
-        self.framework.observe(self.on.install, self._on_install)
+        self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
+        self.framework.observe(self.on.install, self._configure)
+        self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(
-            self.on.certificates_relation_joined, self._on_certificates_relation_joined
+            self.on.certificates_relation_joined, self._configure
         )
         self.framework.observe(
             self.on.certificates_relation_broken,
@@ -64,23 +66,32 @@ class TLSRequirerOperatorCharm(CharmBase):
         except KeyError:
             return False
 
-    def _on_install(self, event: InstallEvent) -> None:
-        """Generate password and private key and stores them in a Juju secret.
+    def _on_collect_status(self, event: CollectStatusEvent) -> None:
+        """Collect status for the charm."""
+        if not self._private_key_is_stored:
+            event.add_status(WaitingStatus("Waiting for private key to be generated"))
+            return
+        if not self._csr_is_stored:
+            event.add_status(WaitingStatus("Waiting for CSR to be generated"))
+            return
+        if not self._certificates_relation_created:
+            event.add_status(ActiveStatus())
+            return
+        if not self._certificate_is_stored:
+            event.add_status(ActiveStatus("Certificate request is sent"))
+            return
+        event.add_status(ActiveStatus("Certificate is available"))
 
-        Args:
-            event: Juju event.
-        """
-        private_key_password = generate_password()
-        private_key = generate_private_key(password=private_key_password.encode())
-        self.unit.add_secret(
-            content={
-                "private-key-password": private_key_password,
-                "private-key": private_key.decode(),
-            },
-            label=self._get_private_key_secret_label(),
-        )
-        logger.info("Private key generated")
-        self.unit.status = ActiveStatus()
+    def _configure(self, event: EventBase) -> None:
+        """Manage certificate lifecycle."""
+        if not self._private_key_is_stored:
+            self._generate_private_key()
+        if not self._csr_is_stored:
+            self._generate_csr(common_name=self._get_unit_common_name())
+        if not self._certificates_relation_created:
+            return
+        if not self._certificate_is_stored:
+            self._request_certificate()
 
     def _on_certificates_relation_broken(self, event: RelationBrokenEvent) -> None:
         """Remove Certificate from juju secret.
@@ -117,19 +128,19 @@ class TLSRequirerOperatorCharm(CharmBase):
                 label=self._get_certificate_secret_label(),
             )
         logger.info(f"New certificate is stored: {event.certificate}")
-        self.unit.status = ActiveStatus("Certificate is available")
 
-    def _on_certificates_relation_joined(self, event: EventBase) -> None:
-        """Validate config and requests a new certificate.
-
-        Args:
-            event: Juju event.
-        """
-        if not self._csr_is_stored:
-            self._generate_csr(common_name=self._get_unit_common_name())
-        if not self._certificate_is_stored:
-            self._request_certificate()
-            self.unit.status = ActiveStatus("Certificate request is sent")
+    def _generate_private_key(self):
+        """Generate private key and store it in Juju secret."""
+        private_key_password = generate_password()
+        private_key = generate_private_key(password=private_key_password.encode())
+        self.unit.add_secret(
+            content={
+                "private-key-password": private_key_password,
+                "private-key": private_key.decode(),
+            },
+            label=self._get_private_key_secret_label(),
+        )
+        logger.info("Private key generated")
 
     def _get_unit_common_name(self) -> str:
         """Return common name for the unit.
@@ -164,6 +175,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         self.certificates.request_certificate_creation(
             certificate_signing_request=csr_secret_content["csr"].encode()
         )
+        logger.info("Certificate request sent")
 
     def _generate_csr(self, common_name: str) -> None:
         """Generate CSR based on private key and stores it in Juju secret."""
@@ -178,6 +190,7 @@ class TLSRequirerOperatorCharm(CharmBase):
         )
         csr_secret_content = {"csr": csr.decode()}
         self.unit.add_secret(content=csr_secret_content, label=self._get_csr_secret_label())
+        logger.info("CSR generated")
 
     @property
     def _private_key_is_stored(self) -> bool:
@@ -190,10 +203,10 @@ class TLSRequirerOperatorCharm(CharmBase):
 
     @property
     def _csr_is_stored(self) -> bool:
-        """Returns whether private key is stored.
+        """Returns whether CSR is stored.
 
         Returns:
-            bool: Whether private key is stored.
+            bool: Whether csr is stored.
         """
         return self._secret_exists(label=self._get_csr_secret_label())
 
@@ -263,4 +276,4 @@ def generate_password() -> str:
 
 
 if __name__ == "__main__":
-    main(TLSRequirerOperatorCharm)
+    main(TLSRequirerCharm)
