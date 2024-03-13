@@ -44,6 +44,7 @@ async def wait_for_certificate_available(ops_test: OpsTest, unit_name: str) -> d
     start_time = time.time()
     while time.time() - start_time < 60:
         tls_requirer_unit = ops_test.model.units[unit_name]
+        assert tls_requirer_unit
         action = await tls_requirer_unit.run_action(action_name="get-certificate")
         action_output = await ops_test.model.get_action_output(
             action_uuid=action.entity_id,
