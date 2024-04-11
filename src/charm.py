@@ -6,6 +6,7 @@
 
 import logging
 import secrets
+import typing
 
 from charms.tls_certificates_interface.v3.tls_certificates import (
     CertificateAvailableEvent,
@@ -148,7 +149,7 @@ class TLSRequirerCharm(CharmBase):
         If `common_name` config option is set, it will be used as a common name.
         Otherwise, the common name will be generated based on the application name and unit number.
         """
-        config_common_name = self.model.config.get("common_name")
+        config_common_name = typing.cast(str, self.model.config.get("common_name"))
         if config_common_name:
             return config_common_name
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
