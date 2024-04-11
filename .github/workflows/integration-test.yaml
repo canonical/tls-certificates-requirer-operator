@@ -9,16 +9,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup LXD
-        uses: canonical/setup-lxd@main
-        with:
-          channel: 5.0/stable
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
           juju-channel: 3.4/stable
           provider: microk8s
           channel: 1.29-strict/stable
+          lxd-channel: 5.20/stable
       - name: Run integration tests
         run: tox -e integration
       - name: Archive Tested Charm
