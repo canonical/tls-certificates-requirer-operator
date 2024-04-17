@@ -22,10 +22,10 @@ NUM_UNITS = 3
 
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
-async def build_and_deploy(ops_test: OpsTest):
-    """Build the charm-under-test and deploy it."""
+async def deploy(ops_test: OpsTest, request):
+    """deploy charm under test."""
     assert ops_test.model
-    charm = await ops_test.build_charm(".")
+    charm = Path(request.config.getoption("--charm_path")).resolve()
     await ops_test.model.deploy(
         charm,
         application_name=APP_NAME,
@@ -60,7 +60,7 @@ async def wait_for_certificate_available(ops_test: OpsTest, unit_name: str) -> d
 @pytest.mark.abort_on_fail
 async def test_given_charm_is_built_when_deployed_then_status_is_active(
     ops_test: OpsTest,
-    build_and_deploy,
+    deploy,
 ):
     assert ops_test.model
     await ops_test.model.wait_for_idle(
@@ -72,7 +72,7 @@ async def test_given_charm_is_built_when_deployed_then_status_is_active(
 
 async def test_given_self_signed_certificates_is_related_when_deployed_then_status_is_active(  # noqa: E501
     ops_test: OpsTest,
-    build_and_deploy,
+    deploy,
 ):
     assert ops_test.model
     await ops_test.model.deploy(
@@ -97,7 +97,7 @@ async def test_given_self_signed_certificates_is_related_when_deployed_then_stat
 
 async def test_given_self_signed_certificates_is_related_when_get_certificate_action_then_certificate_is_returned(  # noqa: E501
     ops_test,
-    build_and_deploy,
+    deploy,
 ):
     for unit in range(NUM_UNITS):
         action_output = await wait_for_certificate_available(
