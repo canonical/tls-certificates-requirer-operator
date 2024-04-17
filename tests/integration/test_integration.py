@@ -23,7 +23,7 @@ NUM_UNITS = 3
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
 async def deploy(ops_test: OpsTest, request):
-    """deploy charm under test."""
+    """Deploy charm under test."""
     assert ops_test.model
     charm = Path(request.config.getoption("--charm_path")).resolve()
     await ops_test.model.deploy(
