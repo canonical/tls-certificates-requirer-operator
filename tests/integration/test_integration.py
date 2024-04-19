@@ -78,7 +78,7 @@ async def test_given_self_signed_certificates_is_related_when_deployed_then_stat
     await ops_test.model.deploy(
         SELF_SIGNED_CERTIFICATES_CHARM_NAME,
         application_name=SELF_SIGNED_CERTIFICATES_CHARM_NAME,
-        channel="edge",
+        channel="stable",
     )
     await ops_test.model.wait_for_idle(
         apps=[SELF_SIGNED_CERTIFICATES_CHARM_NAME],
