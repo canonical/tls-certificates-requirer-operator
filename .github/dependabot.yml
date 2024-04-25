@@ -3,21 +3,13 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     commit-message:
       prefix: "chore: "
-    groups:
-      github_actions:
-        patterns:
-          - "*"
 
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     commit-message:
       prefix: "chore: "
-    groups:
-      pip_dependencies:
-        patterns:
-          - "*"
