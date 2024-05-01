@@ -3,7 +3,7 @@
 # See LICENSE file for licensing details.
 
 
-from typing import Optional
+from typing import List, Optional
 
 from cryptography import x509
 
@@ -21,6 +21,16 @@ class Certificate:
     @property
     def subject(self) -> Optional[str]:
         return self.certificate.subject.rfc4514_string()
+
+    @property
+    def sans_dns(self) -> List[str]:
+        try:
+            sans = self.certificate.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value.get_values_for_type(x509.DNSName)
+        except x509.ExtensionNotFound:
+            return []
+        return [str(san) for san in sans]
 
     @property
     def organization_name(self) -> Optional[str]:
