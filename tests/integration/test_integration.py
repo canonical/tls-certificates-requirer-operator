@@ -29,6 +29,7 @@ async def deploy(ops_test: OpsTest, request):
     await ops_test.model.deploy(
         charm,
         config={
+            "sans_dns": "example.com,example.org",
             "organization_name": "Canonical",
             "country_name": "GB",
             "state_or_province_name": "London",
@@ -120,3 +121,6 @@ async def test_given_self_signed_certificates_is_related_when_get_certificate_ac
         assert certificate.state_or_province_name == "London"
         assert certificate.locality_name == "London"
         assert certificate.email_address is None
+        assert len(certificate.sans_dns) == 2
+        assert "example.com" in certificate.sans_dns
+        assert "example.org" in certificate.sans_dns

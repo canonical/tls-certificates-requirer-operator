@@ -6,8 +6,7 @@
 
 import logging
 import secrets
-import typing
-from typing import Optional
+from typing import List, Optional, cast
 
 from charms.tls_certificates_interface.v3.tls_certificates import (
     CertificateAvailableEvent,
@@ -91,6 +90,7 @@ class TLSRequirerCharm(CharmBase):
         if not self._csr_is_stored:
             self._generate_csr(
                 common_name=self._get_unit_common_name(),
+                sans_dns=self._get_config_sans_dns(),
                 organization=self._get_config_organization_name(),
                 email_address=self._get_config_email_address(),
                 country_name=self._get_config_country_name(),
@@ -157,10 +157,22 @@ class TLSRequirerCharm(CharmBase):
         If `common_name` config option is set, it will be used as a common name.
         Otherwise, the common name will be generated based on the application name and unit number.
         """
-        config_common_name = typing.cast(str, self.model.config.get("common_name"))
+        config_common_name = cast(str, self.model.config.get("common_name"))
         if config_common_name:
             return config_common_name
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
+
+    def _get_config_sans_dns(self) -> List[str]:
+        """Return DNS Subject Alternative Names from the configuration.
+
+        If `sans_dns` config option is set, it will be used as a list of DNS
+        Subject Alternative Names. Otherwise, the list will contain a single
+        DNS Subject Alternative Name based on the application name and unit number.
+        """
+        config_sans_dns = self.model.config.get("sans_dns", "")
+        if config_sans_dns:
+            return config_sans_dns.split(",")
+        return [f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"]
 
     def _get_config_organization_name(self) -> Optional[str]:
         """Return organization name from the configuration."""
@@ -209,11 +221,12 @@ class TLSRequirerCharm(CharmBase):
     def _generate_csr(
             self,
             common_name: str,
+            sans_dns: List[str],
             organization: Optional[str],
             email_address: Optional[str],
             country_name: Optional[str],
-            state_or_province_name: Optional[str] = None,
-            locality_name: Optional[str] = None,
+            state_or_province_name: Optional[str],
+            locality_name: Optional[str],
         ) -> None:
         """Generate CSR based on private key and stores it in Juju secret."""
         if not self._private_key_is_stored:
@@ -224,6 +237,7 @@ class TLSRequirerCharm(CharmBase):
             private_key=private_key_secret_content["private-key"].encode(),
             private_key_password=private_key_secret_content["private-key-password"].encode(),
             subject=common_name,
+            sans_dns=sans_dns,
             organization=organization,
             email_address=email_address,
             country_name=country_name,
