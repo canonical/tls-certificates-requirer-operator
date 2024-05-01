@@ -22,7 +22,6 @@ NUM_UNITS = 3
 
 
 @pytest.fixture(scope="module")
-@pytest.mark.abort_on_fail
 async def deploy(ops_test: OpsTest, request):
     """Deploy charm under test."""
     assert ops_test.model
@@ -37,7 +36,6 @@ async def deploy(ops_test: OpsTest, request):
         },
         application_name=APP_NAME,
         series="jammy",
-        trust=True,
         num_units=NUM_UNITS,
     )
 
