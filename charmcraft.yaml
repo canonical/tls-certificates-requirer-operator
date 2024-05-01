@@ -1,7 +1,29 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+
+name: tls-certificates-requirer
 type: "charm"
+display-name: TLS Certificates Requirer
+summary: |
+  Charm that requests X.509 certificates using the tls-certificates interface.
+description: |
+  Charm that requests X.509 certificates using the `tls-certificates` interface.
+
+  It uses the user-provided `subject` configuration to generate a certificate signing request
+  (CSR) that will be inserted into its unit relation data. In return, a certificate provider
+  should use this CSR, generate a certificate, and provide it back into their application
+  relation data.
+
+  This charm is useful when developing and testing certificate provider.
+website: https://charmhub.io/tls-certificates-requirer
+source: https://github.com/canonical/tls-certificates-requirer-operator
+issues: https://github.com/canonical/tls-certificates-requirer-operator/issues
+docs: https://discourse.charmhub.io/t/tls-certificates-requirer/12977
+
+assumes:
+  - juju >= 3.1
+
 bases:
   - build-on:
     - name: "ubuntu"
@@ -18,3 +40,55 @@ parts:
       - rustc
       - cargo
       - pkg-config
+
+requires:
+  certificates:
+    interface: tls-certificates
+
+config:
+  options:
+    common_name:
+      type: string
+      description: |
+        Common name to be used in the certificate.
+        If not set, the following value will be used: `<app name>-<unit number>-<certificate number>.<model name>`
+
+    sans_dns:
+      type: string
+      description: |
+        Comma separated list of DNS Subject Alternative Names (SAN's) to be used in the certificate.
+        If not set, the following value will be used: `<app name>-<unit number>-<certificate number>.<model name>`
+
+    organization_name:
+      type: string
+      description: |
+        Organization name to be used in the certificate.
+        If not set, no organization name will be used.
+    
+    email_address:
+      type: string
+      description: |
+        Email address to be used in the certificate.
+        If not set, no email address will be used.
+
+    country_name:
+      type: string
+      description: |
+        Country name to be used in the certificate.
+        If not set, no country name will be used.
+    
+    state_or_province_name:
+      type: string
+      description: |
+        State or province name to be used in the certificate.
+        If not set, no state or province name will be used.
+    
+    locality_name:
+      type: string
+      description: |
+        Locality name to be used in the certificate.
+        If not set, no locality name will be used.
+
+actions:
+  get-certificate:
+    description: Returns the TLS Certificate.
