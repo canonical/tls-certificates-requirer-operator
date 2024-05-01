@@ -3,3 +3,28 @@ options:
     type: string
     description: |
       Common name to be used in the certificate. If not set, the common name will be <app name>-<unit number>.<model name>
+
+  organization_name:
+    type: string
+    description: |
+      Organization name to be used in the certificate. If not set, no organization name will be used.
+  
+  email_address:
+    type: string
+    description: |
+      Email address to be used in the certificate. If not set, no email address will be used.
+
+  country_name:
+    type: string
+    description: |
+      Country name to be used in the certificate. If not set, no country name will be used.
+  
+  state_or_province_name:
+    type: string
+    description: |
+      State or province name to be used in the certificate. If not set, no state or province name will be used.
+  
+  locality_name:
+    type: string
+    description: |
+      Locality name to be used in the certificate. If not set, no locality name will be used.

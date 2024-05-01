@@ -94,6 +94,11 @@ class TestCharm(unittest.TestCase):
             private_key=PRIVATE_KEY.encode(),
             private_key_password=PRIVATE_KEY_PASSWORD.encode(),
             subject=f"{self.harness.charm.app.name}-{unit_number}.{self.harness.model.name}",
+            organization=None,
+            email_address=None,
+            country_name=None,
+            state_or_province_name=None,
+            locality_name=None,
         )
         patch_request_certificate_creation.assert_called_with(
             certificate_signing_request=CSR.encode()
@@ -124,6 +129,11 @@ class TestCharm(unittest.TestCase):
             private_key=PRIVATE_KEY.encode(),
             private_key_password=PRIVATE_KEY_PASSWORD.encode(),
             subject=SUBJECT,
+            organization=None,
+            email_address=None,
+            country_name=None,
+            state_or_province_name=None,
+            locality_name=None,
         )
         patch_request_certificate_creation.assert_called_with(
             certificate_signing_request=CSR.encode()

@@ -7,6 +7,7 @@
 import logging
 import secrets
 import typing
+from typing import Optional
 
 from charms.tls_certificates_interface.v3.tls_certificates import (
     CertificateAvailableEvent,
@@ -88,7 +89,14 @@ class TLSRequirerCharm(CharmBase):
         if not self._private_key_is_stored:
             self._generate_private_key()
         if not self._csr_is_stored:
-            self._generate_csr(common_name=self._get_unit_common_name())
+            self._generate_csr(
+                common_name=self._get_unit_common_name(),
+                organization=self._get_config_organization_name(),
+                email_address=self._get_config_email_address(),
+                country_name=self._get_config_country_name(),
+                state_or_province_name=self._get_config_state_or_province_name(),
+                locality_name=self._get_config_locality_name(),
+            )
         if not self._certificates_relation_created:
             return
         if not self._certificate_is_stored:
@@ -154,6 +162,26 @@ class TLSRequirerCharm(CharmBase):
             return config_common_name
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
 
+    def _get_config_organization_name(self) -> Optional[str]:
+        """Return organization name from the configuration."""
+        return self.model.config.get("organization_name", None)
+
+    def _get_config_email_address(self) -> Optional[str]:
+        """Return email address from the configuration."""
+        return self.model.config.get("email_address", None)
+
+    def _get_config_country_name(self) -> Optional[str]:
+        """Return country name from the configuration."""
+        return self.model.config.get("country_name", None)
+
+    def _get_config_state_or_province_name(self) -> Optional[str]:
+        """Return state or province name from the configuration."""
+        return self.model.config.get("state_or_province_name", None)
+
+    def _get_config_locality_name(self) -> Optional[str]:
+        """Return locality name from the configuration."""
+        return self.model.config.get("locality_name", None)
+
     def _revoke_existing_certificates(self) -> None:
         if not self._csr_is_stored:
             return
@@ -178,7 +206,15 @@ class TLSRequirerCharm(CharmBase):
         )
         logger.info("Certificate request sent")
 
-    def _generate_csr(self, common_name: str) -> None:
+    def _generate_csr(
+            self,
+            common_name: str,
+            organization: Optional[str],
+            email_address: Optional[str],
+            country_name: Optional[str],
+            state_or_province_name: Optional[str] = None,
+            locality_name: Optional[str] = None,
+        ) -> None:
         """Generate CSR based on private key and stores it in Juju secret."""
         if not self._private_key_is_stored:
             raise RuntimeError("Private key not stored.")
@@ -188,6 +224,11 @@ class TLSRequirerCharm(CharmBase):
             private_key=private_key_secret_content["private-key"].encode(),
             private_key_password=private_key_secret_content["private-key-password"].encode(),
             subject=common_name,
+            organization=organization,
+            email_address=email_address,
+            country_name=country_name,
+            state_or_province_name=state_or_province_name,
+            locality_name=locality_name,
         )
         csr_secret_content = {"csr": csr.decode()}
         self.unit.add_secret(content=csr_secret_content, label=self._get_csr_secret_label())

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from certificates import Certificate
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -21,16 +22,20 @@ NUM_UNITS = 3
 
 
 @pytest.fixture(scope="module")
-@pytest.mark.abort_on_fail
 async def deploy(ops_test: OpsTest, request):
     """Deploy charm under test."""
     assert ops_test.model
     charm = Path(request.config.getoption("--charm_path")).resolve()
     await ops_test.model.deploy(
         charm,
+        config={
+            "organization_name": "Canonical",
+            "country_name": "GB",
+            "state_or_province_name": "London",
+            "locality_name": "London",
+        },
         application_name=APP_NAME,
         series="jammy",
-        trust=True,
         num_units=NUM_UNITS,
     )
 
@@ -107,3 +112,11 @@ async def test_given_self_signed_certificates_is_related_when_get_certificate_ac
         assert action_output["certificate"] is not None
         assert action_output["ca-certificate"] is not None
         assert action_output["csr"] is not None
+
+        certificate = Certificate(action_output["certificate"])
+
+        assert certificate.organization_name == "Canonical"
+        assert certificate.country_name == "GB"
+        assert certificate.state_or_province_name == "London"
+        assert certificate.locality_name == "London"
+        assert certificate.email_address is None
