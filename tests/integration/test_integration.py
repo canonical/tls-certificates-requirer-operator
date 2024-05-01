@@ -121,4 +121,6 @@ async def test_given_self_signed_certificates_is_related_when_get_certificate_ac
         assert certificate.state_or_province_name == "London"
         assert certificate.locality_name == "London"
         assert certificate.email_address is None
-        assert certificate.sans_dns == ["example.com", "example.org"]
+        assert len(certificate.sans_dns) == 2
+        assert "example.com" in certificate.sans_dns
+        assert "example.org" in certificate.sans_dns
