@@ -4,7 +4,6 @@
 
 name: tls-certificates-requirer
 type: "charm"
-display-name: TLS Certificates Requirer
 summary: |
   Charm that requests X.509 certificates using the tls-certificates interface.
 description: |
@@ -16,10 +15,14 @@ description: |
   relation data.
 
   This charm is useful when developing and testing certificate provider.
-website: https://charmhub.io/tls-certificates-requirer
-source: https://github.com/canonical/tls-certificates-requirer-operator
-issues: https://github.com/canonical/tls-certificates-requirer-operator/issues
-docs: https://discourse.charmhub.io/t/tls-certificates-requirer/12977
+links:
+  website:
+    - https://charmhub.io/tls-certificates-requirer
+  source:
+    - https://github.com/canonical/tls-certificates-requirer-operator
+  issues:
+    - https://github.com/canonical/tls-certificates-requirer-operator/issues
+  documentation: https://discourse.charmhub.io/t/tls-certificates-requirer/12977
 
 assumes:
   - juju >= 3.1
