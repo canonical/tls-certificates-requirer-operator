@@ -4,7 +4,7 @@ options:
     description: |
       Common name to be used in the certificate. If not set, the common name will be <app name>-<unit number>.<model name>
 
-  organization:
+  organization_name:
     type: string
     description: |
       Organization name to be used in the certificate. If not set, no organization name will be used.

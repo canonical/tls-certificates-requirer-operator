@@ -91,7 +91,7 @@ class TLSRequirerCharm(CharmBase):
         if not self._csr_is_stored:
             self._generate_csr(
                 common_name=self._get_unit_common_name(),
-                organization=self._get_config_organization(),
+                organization=self._get_config_organization_name(),
                 email_address=self._get_config_email_address(),
                 country_name=self._get_config_country_name(),
                 state_or_province_name=self._get_config_state_or_province_name(),
@@ -162,9 +162,9 @@ class TLSRequirerCharm(CharmBase):
             return config_common_name
         return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
 
-    def _get_config_organization(self) -> Optional[str]:
+    def _get_config_organization_name(self) -> Optional[str]:
         """Return organization name from the configuration."""
-        return self.model.config.get("organization", None)
+        return self.model.config.get("organization_name", None)
 
     def _get_config_email_address(self) -> Optional[str]:
         """Return email address from the configuration."""
