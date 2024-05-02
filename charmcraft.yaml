@@ -50,17 +50,31 @@ requires:
 
 config:
   options:
+
+    mode:
+      type: string
+      default: "unit"
+      description: |
+        Mode in which the charm will request the certificate.
+        Allowed values:
+          - `unit`: Certificates are managed at the unit level. Each unit will have its own certificate.
+          - `app`: Certificates are managed at the application level. The application can have 1 or more certificates.
+
     common_name:
       type: string
       description: |
         Common name to be used in the certificate.
-        If not set, the following value will be used: `<app name>-<unit number>-<certificate number>.<model name>`
+        If not set, the following value will be used (depending on the mode):
+          - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
+          - `app`: `<app name>-<certificate number>.<model name>`
 
     sans_dns:
       type: string
       description: |
         Comma separated list of DNS Subject Alternative Names (SAN's) to be used in the certificate.
-        If not set, the following value will be used: `<app name>-<unit number>-<certificate number>.<model name>`
+        If not set, the following value will be used (depending on the mode):
+          - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
+          - `app`: `<app name>-<certificate number>.<model name>`
 
     organization_name:
       type: string
