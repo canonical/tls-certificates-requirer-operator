@@ -76,15 +76,15 @@ class TLSRequirerCharm(CharmBase):
             return
         mode = self._get_config_mode()
         if mode == "unit":
-            status = self._collect_unit_status()
+            status = self._collect_status_unit_mode()
             event.add_status(status)
             return
         elif mode == "app":
-            status = self._collect_app_status()
+            status = self._collect_status_app_mode()
             event.add_status(status)
             return
 
-    def _collect_unit_status(self) -> StatusBase:
+    def _collect_status_unit_mode(self) -> StatusBase:
         """Collect status for the unit mode."""
         if not self._unit_private_key_is_stored:
             return WaitingStatus("Waiting for unit private key to be generated")
@@ -96,7 +96,7 @@ class TLSRequirerCharm(CharmBase):
             return ActiveStatus("Unit certificate request is sent")
         return ActiveStatus("Unit certificate is available")
 
-    def _collect_app_status(self) -> StatusBase:
+    def _collect_status_app_mode(self) -> StatusBase:
         """Collect status for the app mode."""
         if not self._app_private_key_is_stored:
             return WaitingStatus("Waiting for app private key to be generated")
