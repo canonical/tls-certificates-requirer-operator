@@ -309,7 +309,10 @@ class TLSRequirerCharm(CharmBase):
 
     def _get_config_mode(self) -> str:
         """Return mode from the configuration."""
-        return self.model.config.get("mode", "unit")
+        mode = self.model.config.get("mode")
+        if not mode or not isinstance(mode, str):
+            return "unit"
+        return mode
 
     def _get_config_sans_dns(self) -> List[str]:
         """Return DNS Subject Alternative Names from the configuration.
@@ -319,7 +322,7 @@ class TLSRequirerCharm(CharmBase):
         DNS Subject Alternative Name based on the application name and unit number.
         """
         config_sans_dns = self.model.config.get("sans_dns", "")
-        if config_sans_dns:
+        if config_sans_dns and isinstance(config_sans_dns, str):
             return config_sans_dns.split(",")
         mode = self._get_config_mode()
         if mode == "unit":
@@ -330,23 +333,38 @@ class TLSRequirerCharm(CharmBase):
 
     def _get_config_organization_name(self) -> Optional[str]:
         """Return organization name from the configuration."""
-        return self.model.config.get("organization_name", None)
+        return self._get_str_config("organization_name")
 
     def _get_config_email_address(self) -> Optional[str]:
         """Return email address from the configuration."""
-        return self.model.config.get("email_address", None)
+        return self._get_str_config("email_address")
 
     def _get_config_country_name(self) -> Optional[str]:
         """Return country name from the configuration."""
-        return self.model.config.get("country_name", None)
+        return self._get_str_config("country_name")
 
     def _get_config_state_or_province_name(self) -> Optional[str]:
         """Return state or province name from the configuration."""
-        return self.model.config.get("state_or_province_name", None)
+        return self._get_str_config("state_or_province_name")
 
     def _get_config_locality_name(self) -> Optional[str]:
         """Return locality name from the configuration."""
-        return self.model.config.get("locality_name", None)
+        return self._get_str_config("locality_name")
+
+    def _get_str_config(self, key: str) -> Optional[str]:
+        """Return value of specified string juju config.
+
+        Checks type and makes sure to return a string or a None
+
+        Args:
+            key: config option key
+        Returns:
+            Value of the config or None
+        """
+        value = self.model.config.get(key, None)
+        if not value or not isinstance(value, str):
+            return None
+        return value
 
     def _revoke_existing_certificates(self) -> None:
         if not self._unit_csr_is_stored:
