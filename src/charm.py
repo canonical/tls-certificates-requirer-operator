@@ -24,8 +24,9 @@ from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBa
 logger = logging.getLogger(__name__)
 
 
-def csr_has_attributes(
-    csr: str, common_name: str,
+def csr_has_attributes(  # noqa: C901
+    csr: str,
+    common_name: str,
     sans_dns: List[str],
     organization: Optional[str],
     email_address: Optional[str],
@@ -35,21 +36,37 @@ def csr_has_attributes(
 ) -> bool:
     """Check whether CSR has the specified attributes."""
     csr_object = x509.load_pem_x509_csr(csr.encode())
-    if csr_object.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value != common_name:
-        return False
-    if csr_object.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value != country_name:
-        return False
-    if csr_object.subject.get_attributes_for_oid(
+    csr_common_name = csr_object.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    csr_country_name = csr_object.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)
+    csr_state_or_province_name = csr_object.subject.get_attributes_for_oid(
         NameOID.STATE_OR_PROVINCE_NAME
-    )[0].value != state_or_province_name:
+    )
+    csr_locality_name = csr_object.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)
+    csr_organization_name = csr_object.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
+    csr_email_address = csr_object.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)
+    if len(csr_common_name) == 0 and common_name:
         return False
-    if csr_object.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value != locality_name:
+    if csr_common_name[0].value != common_name:
         return False
-    if csr_object.subject.get_attributes_for_oid(
-        NameOID.ORGANIZATION_NAME
-    )[0].value != organization:
+    if len(csr_country_name) == 0 and country_name:
         return False
-    if csr_object.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)[0].value != email_address:
+    if csr_country_name[0].value != country_name:
+        return False
+    if len(csr_state_or_province_name) == 0 and state_or_province_name:
+        return False
+    if csr_state_or_province_name[0].value != state_or_province_name:
+        return False
+    if len(csr_locality_name) == 0 and locality_name:
+        return False
+    if csr_locality_name[0].value != locality_name:
+        return False
+    if len(csr_organization_name) == 0 and organization:
+        return False
+    if csr_organization_name[0].value != organization:
+        return False
+    if len(csr_email_address) == 0 and email_address:
+        return False
+    if csr_email_address[0].value != email_address:
         return False
     sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     if sorted([str(san.value) for san in sans]) != sorted(sans_dns):
@@ -67,6 +84,7 @@ class TLSRequirerCharm(CharmBase):
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
         self.framework.observe(self.on.install, self._configure)
         self.framework.observe(self.on.update_status, self._configure)
+        self.framework.observe(self.on.config_changed, self._configure)
         self.framework.observe(
             self.on.certificates_relation_joined, self._configure
         )
@@ -483,8 +501,14 @@ class TLSRequirerCharm(CharmBase):
             locality_name=locality_name,
         )
         csr_secret_content = {"csr": csr.decode()}
-        self.unit.add_secret(content=csr_secret_content, label=self._get_unit_csr_secret_label())
-        logger.info("Unit CSR generated")
+        try:
+            csr_secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
+        except SecretNotFoundError:
+            self.unit.add_secret(content=csr_secret_content, label=self._get_unit_csr_secret_label())
+            logger.info("Unit CSR secret created")
+            return
+        csr_secret.set_content(content=csr_secret_content)
+        logger.info("Unit CSR secret updated")
 
     def _generate_app_csr(
             self,
@@ -513,8 +537,14 @@ class TLSRequirerCharm(CharmBase):
             locality_name=locality_name,
         )
         csr_secret_content = {"csr": csr.decode()}
-        self.app.add_secret(content=csr_secret_content, label=self._get_app_csr_secret_label())
-        logger.info("App CSR generated")
+        try:
+            csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
+        except SecretNotFoundError:
+            self.app.add_secret(content=csr_secret_content, label=self._get_app_csr_secret_label())
+            logger.info("App CSR secret created")
+            return
+        csr_secret.set_content(content=csr_secret_content)
+        logger.info("App CSR secret updated")
 
     def _unit_csr_has_attributes(
         self,
