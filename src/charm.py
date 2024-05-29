@@ -50,23 +50,24 @@ def csr_has_attributes(  # noqa: C901
         return False
     if len(csr_country_name) == 0 and country_name:
         return False
-    if csr_country_name[0].value != country_name:
+    if len(csr_country_name)!= 0 and csr_country_name[0].value != country_name:
         return False
     if len(csr_state_or_province_name) == 0 and state_or_province_name:
         return False
-    if csr_state_or_province_name[0].value != state_or_province_name:
+    if len(csr_state_or_province_name)!= 0 and \
+      csr_state_or_province_name[0].value != state_or_province_name:
         return False
     if len(csr_locality_name) == 0 and locality_name:
         return False
-    if csr_locality_name[0].value != locality_name:
+    if len(csr_locality_name)!=0 and csr_locality_name[0].value != locality_name:
         return False
     if len(csr_organization_name) == 0 and organization:
         return False
-    if csr_organization_name[0].value != organization:
+    if len(csr_organization_name) != 0 and csr_organization_name[0].value != organization:
         return False
     if len(csr_email_address) == 0 and email_address:
         return False
-    if csr_email_address[0].value != email_address:
+    if len(csr_email_address)!= 0 and csr_email_address[0].value != email_address:
         return False
     sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     if sorted([str(san.value) for san in sans]) != sorted(sans_dns):
@@ -504,7 +505,9 @@ class TLSRequirerCharm(CharmBase):
         try:
             csr_secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
         except SecretNotFoundError:
-            self.unit.add_secret(content=csr_secret_content, label=self._get_unit_csr_secret_label())
+            self.unit.add_secret(
+                content=csr_secret_content, label=self._get_unit_csr_secret_label()
+            )
             logger.info("Unit CSR secret created")
             return
         csr_secret.set_content(content=csr_secret_content)
