@@ -14,12 +14,47 @@ from charms.tls_certificates_interface.v3.tls_certificates import (
     generate_csr,
     generate_private_key,
 )
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
 from ops.framework import EventBase
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBase, WaitingStatus
 
 logger = logging.getLogger(__name__)
+
+
+def csr_has_attributes(
+    csr: str, common_name: str,
+    sans_dns: List[str],
+    organization: Optional[str],
+    email_address: Optional[str],
+    country_name: Optional[str],
+    state_or_province_name: Optional[str],
+    locality_name: Optional[str]
+) -> bool:
+    """Check whether CSR has the specified attributes."""
+    csr_object = x509.load_pem_x509_csr(csr.encode())
+    if csr_object.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value != common_name:
+        return False
+    if csr_object.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value != country_name:
+        return False
+    if csr_object.subject.get_attributes_for_oid(
+        NameOID.STATE_OR_PROVINCE_NAME
+    )[0].value != state_or_province_name:
+        return False
+    if csr_object.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value != locality_name:
+        return False
+    if csr_object.subject.get_attributes_for_oid(
+        NameOID.ORGANIZATION_NAME
+    )[0].value != organization:
+        return False
+    if csr_object.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)[0].value != email_address:
+        return False
+    sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    if sorted([str(san.value) for san in sans]) != sorted(sans_dns):
+        return False
+    return True
 
 
 class TLSRequirerCharm(CharmBase):
@@ -123,7 +158,15 @@ class TLSRequirerCharm(CharmBase):
         """Manage certificate lifecycle when they are managed per unit."""
         if not self._unit_private_key_is_stored:
             self._generate_unit_private_key()
-        if not self._unit_csr_is_stored:
+        if not self._unit_csr_is_stored or not self._unit_csr_has_attributes(
+            common_name=self._get_common_name(),
+            sans_dns=self._get_config_sans_dns(),
+            organization=self._get_config_organization_name(),
+            email_address=self._get_config_email_address(),
+            country_name=self._get_config_country_name(),
+            state_or_province_name=self._get_config_state_or_province_name(),
+            locality_name=self._get_config_locality_name(),
+        ):
             self._generate_unit_csr(
                 common_name=self._get_common_name(),
                 sans_dns=self._get_config_sans_dns(),
@@ -144,7 +187,15 @@ class TLSRequirerCharm(CharmBase):
             return
         if not self._app_private_key_is_stored:
             self._generate_app_private_key()
-        if not self._app_csr_is_stored:
+        if not self._app_csr_is_stored or not self._app_csr_has_attributes(
+            common_name=self._get_common_name(),
+            sans_dns=self._get_config_sans_dns(),
+            organization=self._get_config_organization_name(),
+            email_address=self._get_config_email_address(),
+            country_name=self._get_config_country_name(),
+            state_or_province_name=self._get_config_state_or_province_name(),
+            locality_name=self._get_config_locality_name(),
+        ):
             self._generate_app_csr(
                 common_name=self._get_common_name(),
                 sans_dns=self._get_config_sans_dns(),
@@ -207,7 +258,7 @@ class TLSRequirerCharm(CharmBase):
         """Store the unit certificate in a Juju secret."""
         csr_secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
         csr_secret_content = csr_secret.get_content(refresh=True)
-        if csr_secret_content["csr"].strip() != certificate_signing_request:
+        if csr_secret_content["csr"].strip() != certificate_signing_request.strip():
             logger.info("New certificate CSR doesn't match with the one stored.")
             return
         certificate_secret_content = {
@@ -238,7 +289,7 @@ class TLSRequirerCharm(CharmBase):
             return
         csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
         csr_secret_content = csr_secret.get_content(refresh=True)
-        if csr_secret_content["csr"].strip() != certificate_signing_request:
+        if csr_secret_content["csr"].strip() != certificate_signing_request.strip():
             logger.info("New certificate CSR doesn't match with the one stored.")
             return
         certificate_secret_content = {
@@ -464,6 +515,54 @@ class TLSRequirerCharm(CharmBase):
         csr_secret_content = {"csr": csr.decode()}
         self.app.add_secret(content=csr_secret_content, label=self._get_app_csr_secret_label())
         logger.info("App CSR generated")
+
+    def _unit_csr_has_attributes(
+        self,
+        common_name: str,
+        sans_dns: List[str],
+        organization: Optional[str],
+        email_address: Optional[str],
+        country_name: Optional[str],
+        state_or_province_name: Optional[str],
+        locality_name: Optional[str],
+    ) -> bool:
+        secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
+        content = secret.get_content(refresh=True)
+        csr = content["csr"]
+        return csr_has_attributes(
+            csr=csr,
+            common_name=common_name,
+            sans_dns=sans_dns,
+            organization=organization,
+            email_address=email_address,
+            country_name=country_name,
+            state_or_province_name=state_or_province_name,
+            locality_name=locality_name,
+        )
+
+    def _app_csr_has_attributes(
+        self,
+        common_name: str,
+        sans_dns: List[str],
+        organization: Optional[str],
+        email_address: Optional[str],
+        country_name: Optional[str],
+        state_or_province_name: Optional[str],
+        locality_name: Optional[str],
+    ) -> bool:
+        secret = self.model.get_secret(label=self._get_app_csr_secret_label())
+        content = secret.get_content(refresh=True)
+        csr = content["csr"]
+        return csr_has_attributes(
+            csr=csr,
+            common_name=common_name,
+            sans_dns=sans_dns,
+            organization=organization,
+            email_address=email_address,
+            country_name=country_name,
+            state_or_province_name=state_or_province_name,
+            locality_name=locality_name,
+        )
 
     @property
     def _unit_private_key_is_stored(self) -> bool:
