@@ -1,6 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import datetime
 import unittest
 from unittest.mock import Mock, patch
 
@@ -9,6 +10,11 @@ from charm import TLSRequirerCharm
 from ops import testing
 from ops.model import ActiveStatus, SecretNotFoundError
 from tls import generate_csr, generate_private_key
+
+from lib.charms.tls_certificates_interface.v3.tls_certificates import (
+    ProviderCertificate,
+    RequirerCSR,
+)
 
 PRIVATE_KEY_PASSWORD = "whatever password"
 COMMON_NAME = "banana.com"
@@ -84,10 +90,11 @@ class TestCharmUnitMode(unittest.TestCase):
 
         self.harness.charm.on.install.emit()
 
-        secret = self.harness._backend.secret_get(label="private-key-0")
+        secret = self.harness.model.get_secret(label="private-key-0")
+        secret_content = secret.get_content(refresh=True)
 
-        self.assertEqual(secret["private-key"], self.private_key.decode())
-        self.assertEqual(secret["private-key-password"], PRIVATE_KEY_PASSWORD)
+        self.assertEqual(secret_content["private-key"], self.private_key.decode())
+        self.assertEqual(secret_content["private-key-password"], PRIVATE_KEY_PASSWORD)
 
     @patch("charm.generate_csr")
     @patch(
@@ -198,19 +205,46 @@ class TestCharmUnitMode(unittest.TestCase):
             certificate_signing_request=self.csr
         )
 
-    @patch("charm.generate_csr")
-    def test_given_private_key_is_stored_when_certificates_relation_joined_then_status_is_active(
-        self, patch_generate_csr
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    )
+    def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
+        self,
+        patch_get_certificate_signing_requests,
     ):
-        patch_generate_csr.return_value = self.csr
-        self._store_unit_private_key()
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": self.csr.decode()},
+            label="csr-0",
+        )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
+        )
+
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.unit.name,
+                csr=self.csr.decode(),
+                is_ca=False,
+            )
+        ]
 
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
+
         self.harness.evaluate_status()
 
         self.assertEqual(
@@ -218,38 +252,104 @@ class TestCharmUnitMode(unittest.TestCase):
             ActiveStatus("Unit certificate request is sent"),
         )
 
-    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(self):
-        chain = ["whatever cert 1", "whatever cert 2"]
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
+        self,
+        patch_get_assigned_certificates,
+    ):
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": self.csr.decode()},
             label="csr-0",
         )
-
-        self.harness.charm._on_certificate_available(
-            event=Mock(
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
                 certificate=CERTIFICATE,
                 ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
             )
+        ]
+
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
         )
 
-        secret = self.harness._backend.secret_get(label="certificate-0")
-        self.assertEqual(secret["certificate"], CERTIFICATE)
-        self.assertEqual(secret["ca-certificate"], CA)
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        secret = self.harness.model.get_secret(label="certificate-0")
+        secret_content = secret.get_content(refresh=True)
+        self.assertEqual(secret_content["certificate"], CERTIFICATE)
+        self.assertEqual(secret_content["ca-certificate"], CA)
         self.assertEqual(
-            secret["csr"],
+            secret_content["csr"],
             self.csr.decode(),
         )
 
-    def test_given_csrs_match_when_on_certificate_available_then_status_is_active(self):
-        chain = ["whatever cert 1", "whatever cert 2"]
-        self._store_unit_private_key()
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    )
+    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
+        self,
+        patch_get_certificate_signing_requests,
+        patch_get_assigned_certificates,
+    ):
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.unit.name,
+                csr=self.csr.decode(),
+                is_ca=False,
+            )
+        ]
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
+            )
+        ]
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": self.csr.decode()},
             label="csr-0",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "certificate": CERTIFICATE,
+                "ca-certificate": CA,
+            },
+            label="certificate-0",
         )
         self.harness.update_config(
             {
@@ -264,22 +364,10 @@ class TestCharmUnitMode(unittest.TestCase):
             }
         )
 
-        relation_id = self.harness.add_relation(
-            relation_name="certificates", remote_app="certificates-provider"
-        )
-
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
-                ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
-            )
-        )
         self.harness.evaluate_status()
 
         self.assertEqual(
@@ -287,10 +375,27 @@ class TestCharmUnitMode(unittest.TestCase):
             ActiveStatus("Unit certificate is available"),
         )
 
-    def test_given_certificate_already_stored_when_on_certificate_available_then_certificate_is_overwritten(  # noqa: E501
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    def test_given_certificate_already_stored_when_different_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self,
+        patch_get_assigned_certificates
     ):
-        chain = ["whatever cert 1", "whatever cert 2"]
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+
+            }
+        )
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
         self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.unit.name,
@@ -302,29 +407,31 @@ class TestCharmUnitMode(unittest.TestCase):
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
-                "certificate": "old certificate",
-                "ca-certificate": "old ca certificate",
+                "certificate": CERTIFICATE,
+                "ca-certificate": CA,
             },
             label="certificate-0",
         )
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                certificate="New certificate content",
                 ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
             )
+        ]
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
         secret_content = self.harness.model.get_secret(label="certificate-0").get_content(
             refresh=True
         )
-        self.assertEqual(secret_content["certificate"], CERTIFICATE)
-        self.assertEqual(secret_content["ca-certificate"], CA)
-        self.assertEqual(
-            secret_content["csr"],
-            self.csr.decode(),
-        )
+        self.assertEqual(secret_content["certificate"], "New certificate content")
 
     def test_given_certificate_is_not_stored_when_on_get_certificate_action_then_event_fails(self):
         event = Mock()
@@ -334,11 +441,12 @@ class TestCharmUnitMode(unittest.TestCase):
 
         event.fail.assert_called()
 
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
+        patch_get_assigned_certificates,
     ):
-        self.harness.set_leader(is_leader=True)
-        event = Mock()
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
@@ -348,7 +456,29 @@ class TestCharmUnitMode(unittest.TestCase):
             },
             label="certificate-0",
         )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "csr": self.csr.decode(),
+            },
+            label="csr-0",
+        )
 
+        self.harness.set_leader(is_leader=True)
+
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=0,
+                application_name=self.harness.charm.app.name,
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
+            )
+        ]
+        event = Mock()
         self.harness.charm._on_get_certificate_action(event=event)
 
         event.set_results.assert_called_with(
@@ -366,6 +496,13 @@ class TestCharmUnitMode(unittest.TestCase):
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
+                "csr": self.csr.decode(),
+            },
+            label="csr-0",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
                 "certificate": "whatever",
                 "ca-certificate": CA,
             },
@@ -375,7 +512,7 @@ class TestCharmUnitMode(unittest.TestCase):
         self.harness.charm._on_certificates_relation_broken(event=Mock())
 
         with pytest.raises(SecretNotFoundError):
-            self.harness._backend.secret_get(label="certificate-0")
+            self.harness.model.get_secret(label="certificate-0")
 
     @patch("charm.generate_csr")
     def test_given_csr_stored_when_relation_joined_then_csr_not_generated_again(
@@ -414,18 +551,33 @@ class TestCharmUnitMode(unittest.TestCase):
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
-        self.assertEqual(self.harness._backend.secret_get(label="csr-0")["csr"], self.csr.decode())
+        secret = self.harness.model.get_secret(label="csr-0")
+        secret_content = secret.get_content(refresh=True)
+        self.assertEqual(secret_content["csr"], self.csr.decode())
         patch_generate_csr.assert_not_called()
 
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505)
+    )
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
-    def test_given_certificate_stored_when_relation_joined_then_certificate_not_requested_again(
+    def test_given_certificate_requested_when_configure_then_certificate_not_requested_again(
         self,
         patch_request_certificate_creation,
+        patch_get_certificate_signing_requests,
     ):
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
+        )
         self.harness.set_leader(is_leader=True)
-        chain = ["whatever cert 1", "whatever cert 2"]
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": self.csr.decode()},
@@ -435,33 +587,19 @@ class TestCharmUnitMode(unittest.TestCase):
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
-
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
-                ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.unit.name,
+                csr=self.csr.decode(),
+                is_ca=False,
             )
-        )
-        self._add_model_secret(
-            owner=self.harness.model.unit.name,
-            content={
-                "private-key": self.private_key.decode(),
-                "private-key-password": PRIVATE_KEY_PASSWORD,
-            },
-            label="private-key-0",
-        )
-
+        ]
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
-        self.harness.evaluate_status()
 
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ActiveStatus("Unit certificate is available"),
-        )
         patch_request_certificate_creation.assert_not_called()
 
 
@@ -529,10 +667,11 @@ class TestCharmAppMode(unittest.TestCase):
 
         self.harness.charm.on.install.emit()
 
-        secret = self.harness._backend.secret_get(label="private-key")
+        secret = self.harness.model.get_secret(label="private-key")
+        secret_content = secret.get_content(refresh=True)
 
-        self.assertEqual(secret["private-key"], self.private_key.decode())
-        self.assertEqual(secret["private-key-password"], PRIVATE_KEY_PASSWORD)
+        self.assertEqual(secret_content["private-key"], self.private_key.decode())
+        self.assertEqual(secret_content["private-key-password"], PRIVATE_KEY_PASSWORD)
 
 
     @patch("charm.generate_csr")
@@ -641,19 +780,46 @@ class TestCharmAppMode(unittest.TestCase):
             certificate_signing_request=self.csr
         )
 
-    @patch("charm.generate_csr")
-    def test_given_private_key_is_stored_when_certificates_relation_joined_then_status_is_active(
-        self, patch_generate_csr
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    )
+    def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
+        self,
+        patch_get_certificate_signing_requests,
     ):
-        patch_generate_csr.return_value = self.csr
-        self._store_app_private_key()
+        self._add_model_secret(
+            owner=self.harness.model.app.name,
+            content={"csr": self.csr.decode()},
+            label="csr",
+        )
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
+        )
+
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.unit.name,
+                csr=self.csr.decode(),
+                is_ca=False,
+            )
+        ]
 
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
+
         self.harness.evaluate_status()
 
         self.assertEqual(
@@ -661,39 +827,128 @@ class TestCharmAppMode(unittest.TestCase):
             ActiveStatus("App certificate request is sent"),
         )
 
-    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(self):
-        chain = ["whatever cert 1", "whatever cert 2"]
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
+        self,
+        patch_get_assigned_certificates,
+    ):
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={"csr": self.csr.decode()},
             label="csr",
         )
 
-        self.harness.charm._on_certificate_available(
-            event=Mock(
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
                 certificate=CERTIFICATE,
                 ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
             )
+        ]
+
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
         )
 
-        secret = self.harness._backend.secret_get(label="certificate")
-        self.assertEqual(secret["certificate"], CERTIFICATE)
-        self.assertEqual(secret["ca-certificate"], CA)
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        secret = self.harness.model.get_secret(label="certificate")
+        secret_content = secret.get_content(refresh=True)
+        self.assertEqual(secret_content["certificate"], CERTIFICATE)
+        self.assertEqual(secret_content["ca-certificate"], CA)
         self.assertEqual(
-            secret["csr"],
+            secret_content["csr"],
             self.csr.decode(),
         )
 
-    def test_given_csrs_match_when_on_certificate_available_then_status_is_active(self):
-        chain = ["whatever cert 1", "whatever cert 2"]
-        self._store_app_private_key()
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    )
+    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
+        self,
+        patch_get_certificate_signing_requests,
+        patch_get_assigned_certificates,
+    ):
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.unit.name,
+                csr=self.csr.decode(),
+                is_ca=False,
+            )
+        ]
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
+            )
+        ]
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={"csr": self.csr.decode()},
             label="csr",
         )
+
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+
+            }
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        self.harness.evaluate_status()
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ActiveStatus("App certificate is available"),
+        )
+
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
+    def test_given_certificate_already_stored_when_different_certificate_available_then_certificate_is_overwritten(  # noqa: E501
+        self,
+        patch_get_assigned_certificates
+    ):
         self.harness.update_config(
             {
                 "common_name": COMMON_NAME,
@@ -709,31 +964,7 @@ class TestCharmAppMode(unittest.TestCase):
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
-
-        self.harness.add_relation_unit(
-            relation_id=relation_id, remote_unit_name="certificates-provider/0"
-        )
-
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
-                ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
-            )
-        )
-        self.harness.evaluate_status()
-
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ActiveStatus("App certificate is available"),
-        )
-
-
-    def test_given_certificate_already_stored_when_on_certificate_available_then_certificate_is_overwritten(  # noqa: E501
-        self,
-    ):
-        chain = ["whatever cert 1", "whatever cert 2"]
+        self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={
@@ -749,24 +980,27 @@ class TestCharmAppMode(unittest.TestCase):
             },
             label="certificate",
         )
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
+
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                certificate="New certificate content",
                 ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
             )
+        ]
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
         secret_content = self.harness.model.get_secret(label="certificate").get_content(
             refresh=True
         )
-        self.assertEqual(secret_content["certificate"], CERTIFICATE)
-        self.assertEqual(secret_content["ca-certificate"], CA)
-        self.assertEqual(
-            secret_content["csr"],
-            self.csr.decode(),
-        )
+        self.assertEqual(secret_content["certificate"], "New certificate content")
 
     def test_given_certificate_is_not_stored_when_on_get_certificate_action_then_event_fails(self):
         event = Mock()
@@ -775,10 +1009,12 @@ class TestCharmAppMode(unittest.TestCase):
 
         event.fail.assert_called()
 
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
+        patch_get_assigned_certificates,
     ):
-        event = Mock()
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={
@@ -788,6 +1024,26 @@ class TestCharmAppMode(unittest.TestCase):
             },
             label="certificate",
         )
+        self._add_model_secret(
+            owner=self.harness.model.app.name,
+            content={
+                "csr": self.csr.decode(),
+            },
+            label="csr",
+        )
+        patch_get_assigned_certificates.return_value = [
+            ProviderCertificate(
+                relation_id=0,
+                application_name=self.harness.charm.app.name,
+                certificate=CERTIFICATE,
+                ca=CA,
+                chain=[CA],
+                revoked=False,
+                expiry_time=datetime.datetime.now(),
+                csr=self.csr.decode(),
+            )
+        ]
+        event = Mock()
 
         self.harness.charm._on_get_certificate_action(event=event)
 
@@ -814,7 +1070,7 @@ class TestCharmAppMode(unittest.TestCase):
         self.harness.charm._on_certificates_relation_broken(event=Mock())
 
         with pytest.raises(SecretNotFoundError):
-            self.harness._backend.secret_get(label="certificate")
+            self.harness.model.get_secret(label="certificate")
 
     @patch("charm.generate_csr")
     def test_given_csr_stored_when_relation_joined_then_csr_not_generated_again(
@@ -852,7 +1108,9 @@ class TestCharmAppMode(unittest.TestCase):
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
 
-        self.assertEqual(self.harness._backend.secret_get(label="csr")["csr"], self.csr.decode())
+        secret = self.harness.model.get_secret(label="csr")
+        secret_content = secret.get_content(refresh=True)
+        self.assertEqual(secret_content["csr"], self.csr.decode())
         patch_generate_csr.assert_not_called()
 
     @patch("charm.generate_csr")
@@ -935,31 +1193,31 @@ class TestCharmAppMode(unittest.TestCase):
         self.assertEqual(csr_secret["csr"], new_csr.decode())
 
 
+    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    )
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
-    def test_given_certificate_stored_when_relation_joined_then_certificate_not_requested_again(
+    def test_given_certificate_is_requested_when_configure_then_certificate_not_requested_again(
         self,
         patch_request_certificate_creation,
+        patch_get_certificate_signing_requests,
     ):
-        chain = ["whatever cert 1", "whatever cert 2"]
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
+        )
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={"csr": self.csr.decode()},
             label="csr",
-        )
-
-        relation_id = self.harness.add_relation(
-            relation_name="certificates", remote_app="certificates-provider"
-        )
-
-        self.harness.charm._on_certificate_available(
-            event=Mock(
-                certificate=CERTIFICATE,
-                ca=CA,
-                chain=chain,
-                certificate_signing_request=self.csr.decode(),
-            )
         )
         self._add_model_secret(
             owner=self.harness.model.app.name,
@@ -970,13 +1228,21 @@ class TestCharmAppMode(unittest.TestCase):
             label="private-key",
         )
 
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+        patch_get_certificate_signing_requests.return_value = [
+            RequirerCSR(
+                relation_id=relation_id,
+                application_name=self.harness.charm.app.name,
+                unit_name=self.harness.model.app.name,
+                csr=self.csr.decode(),
+                is_ca=False,
+            )
+        ]
+
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
-        self.harness.evaluate_status()
 
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ActiveStatus("App certificate is available"),
-        )
         patch_request_certificate_creation.assert_not_called()
