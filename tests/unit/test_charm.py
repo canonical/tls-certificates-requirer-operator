@@ -106,7 +106,6 @@ class TestCharmUnitMode(unittest.TestCase):
         patch_generate_csr,
     ):
         patch_generate_csr.return_value = self.csr
-        self.harness.set_leader(is_leader=True)
         self._store_unit_private_key()
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
@@ -143,7 +142,6 @@ class TestCharmUnitMode(unittest.TestCase):
         patch_generate_csr.return_value = self.csr
         self._store_unit_private_key()
         self.harness.update_config({"common_name": COMMON_NAME})
-        self.harness.set_leader(is_leader=True)
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -180,7 +178,6 @@ class TestCharmUnitMode(unittest.TestCase):
         patch_generate_csr.return_value = self.csr
         self._store_unit_private_key()
         self.harness.update_config({"sans_dns": "banana.com,apple.com"})
-        self.harness.set_leader(is_leader=True)
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -381,22 +378,6 @@ class TestCharmUnitMode(unittest.TestCase):
         self,
         patch_get_assigned_certificates
     ):
-        self.harness.update_config(
-            {
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
-                "organization_name": ORGANIZATION_NAME,
-                "email_address": EMAIL_ADDRESS,
-                "country_name": COUNTRY_NAME,
-                "state_or_province_name": STATE_OR_PROVINCE_NAME,
-                "locality_name": LOCALITY_NAME,
-
-            }
-        )
-        relation_id = self.harness.add_relation(
-            relation_name="certificates", remote_app="certificates-provider"
-        )
-        self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
@@ -412,6 +393,22 @@ class TestCharmUnitMode(unittest.TestCase):
             },
             label="certificate-0",
         )
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+
+            }
+        )
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
         patch_get_assigned_certificates.return_value = [
             ProviderCertificate(
                 relation_id=relation_id,
@@ -566,6 +563,11 @@ class TestCharmUnitMode(unittest.TestCase):
         patch_request_certificate_creation,
         patch_get_certificate_signing_requests,
     ):
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": self.csr.decode()},
+            label="csr-0",
+        )
         self.harness.update_config(
             {
                 "common_name": COMMON_NAME,
@@ -577,13 +579,6 @@ class TestCharmUnitMode(unittest.TestCase):
                 "locality_name": LOCALITY_NAME,
             }
         )
-        self.harness.set_leader(is_leader=True)
-        self._add_model_secret(
-            owner=self.harness.model.unit.name,
-            content={"csr": self.csr.decode()},
-            label="csr-0",
-        )
-
         relation_id = self.harness.add_relation(
             relation_name="certificates", remote_app="certificates-provider"
         )
@@ -949,6 +944,21 @@ class TestCharmAppMode(unittest.TestCase):
         self,
         patch_get_assigned_certificates
     ):
+        self._add_model_secret(
+            owner=self.harness.model.app.name,
+            content={
+                "csr": self.csr.decode(),
+            },
+            label="csr",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.app.name,
+            content={
+                "certificate": "old certificate",
+                "ca-certificate": "old ca certificate",
+            },
+            label="certificate",
+        )
         self.harness.update_config(
             {
                 "common_name": COMMON_NAME,
@@ -965,21 +975,6 @@ class TestCharmAppMode(unittest.TestCase):
             relation_name="certificates", remote_app="certificates-provider"
         )
         self.harness.set_leader(is_leader=True)
-        self._add_model_secret(
-            owner=self.harness.model.app.name,
-            content={
-                "csr": self.csr.decode(),
-            },
-            label="csr",
-        )
-        self._add_model_secret(
-            owner=self.harness.model.app.name,
-            content={
-                "certificate": "old certificate",
-                "ca-certificate": "old ca certificate",
-            },
-            label="certificate",
-        )
 
         patch_get_assigned_certificates.return_value = [
             ProviderCertificate(
@@ -1203,17 +1198,6 @@ class TestCharmAppMode(unittest.TestCase):
         patch_request_certificate_creation,
         patch_get_certificate_signing_requests,
     ):
-        self.harness.update_config(
-            {
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
-                "organization_name": ORGANIZATION_NAME,
-                "email_address": EMAIL_ADDRESS,
-                "country_name": COUNTRY_NAME,
-                "state_or_province_name": STATE_OR_PROVINCE_NAME,
-                "locality_name": LOCALITY_NAME,
-            }
-        )
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={"csr": self.csr.decode()},
@@ -1226,6 +1210,17 @@ class TestCharmAppMode(unittest.TestCase):
                 "private-key-password": PRIVATE_KEY_PASSWORD,
             },
             label="private-key",
+        )
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
         )
 
         relation_id = self.harness.add_relation(

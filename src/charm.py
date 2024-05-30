@@ -181,8 +181,6 @@ class TLSRequirerCharm(CharmBase):
         """Manage certificate lifecycle when they are managed per unit."""
         if not self._unit_private_key_is_stored:
             self._generate_unit_private_key()
-        if not self._certificates_relation_created:
-            return
         if not self._unit_csr_secret_exists or not self._unit_csr_has_attributes(
             common_name=self._get_common_name(),
             sans_dns=self._get_config_sans_dns(),
@@ -201,6 +199,8 @@ class TLSRequirerCharm(CharmBase):
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
+        if not self._certificates_relation_created:
+            return
         if not self._unit_certificate_is_requested():
             self._request_unit_certificate()
         if not self._unit_certificate_is_stored():
@@ -212,8 +212,6 @@ class TLSRequirerCharm(CharmBase):
             return
         if not self._app_private_key_is_stored:
             self._generate_app_private_key()
-        if not self._certificates_relation_created:
-            return
         if not self._app_csr_secret_exists or not self._app_csr_has_attributes(
             common_name=self._get_common_name(),
             sans_dns=self._get_config_sans_dns(),
@@ -232,6 +230,8 @@ class TLSRequirerCharm(CharmBase):
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
+        if not self._certificates_relation_created:
+            return
         if not self._app_certificate_is_requested():
             self._request_app_certificate()
         if not self._app_certificate_is_stored():
