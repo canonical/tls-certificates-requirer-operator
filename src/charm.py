@@ -260,18 +260,15 @@ class TLSRequirerCharm(CharmBase):
         """Return whether unit certificate is available in Juju secret."""
         if not self._unit_certificate_secret_exists:
             return False
-        stored_csr_secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
-        stored_csr = stored_csr_secret.get_content(refresh=True)["csr"]
         stored_certificate_secret = self.model.get_secret(
             label=self._get_unit_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        provider_certificates = self.certificates.get_assigned_certificates()
-        for certificate in provider_certificates:
-            if certificate.csr == stored_csr and \
-                certificate.certificate == stored_certificate:
-                return True
-        return False
+
+        assigned_certificate = self._get_assigned_unit_certificate()
+        if not assigned_certificate:
+            return False
+        return assigned_certificate.certificate.strip() == stored_certificate.strip()
 
     def _app_certificate_is_stored(self) -> bool:
         """Return whether app certificate is available in Juju secret."""
@@ -286,14 +283,14 @@ class TLSRequirerCharm(CharmBase):
         assigned_certificate = self._get_assigned_app_certificate()
         if not assigned_certificate:
             return False
-        return assigned_certificate.certificate == stored_certificate
+        return assigned_certificate.certificate.strip() == stored_certificate.strip()
 
     def _get_assigned_unit_certificate(self) -> Optional[ProviderCertificate]:
         csr_secret = self.model.get_secret(label=self._get_unit_csr_secret_label())
         csr_secret_content = csr_secret.get_content(refresh=True)
         provider_certificates = self.certificates.get_assigned_certificates()
         for certificate in provider_certificates:
-            if certificate.csr == csr_secret_content["csr"]:
+            if certificate.csr.strip() == csr_secret_content["csr"].strip():
                 return certificate
         return None
 
@@ -302,7 +299,7 @@ class TLSRequirerCharm(CharmBase):
         csr_secret_content = csr_secret.get_content(refresh=True)
         provider_certificates = self.certificates.get_assigned_certificates()
         for certificate in provider_certificates:
-            if certificate.csr == csr_secret_content["csr"]:
+            if certificate.csr.strip() == csr_secret_content["csr"].strip():
                 return certificate
         return None
 
@@ -310,6 +307,7 @@ class TLSRequirerCharm(CharmBase):
         """Store the assigned unit certificate in a Juju secret."""
         assigned_certificate = self._get_assigned_unit_certificate()
         if not assigned_certificate:
+            logger.info("No unit certificate is assigned")
             return
         certificate_secret_content = {
             "certificate": assigned_certificate.certificate,
@@ -336,6 +334,7 @@ class TLSRequirerCharm(CharmBase):
             return
         assigned_certificate = self._get_assigned_app_certificate()
         if not assigned_certificate:
+            logger.info("No app certificate is assigned")
             return
         certificate_secret_content = {
             "certificate": assigned_certificate.certificate,
@@ -628,7 +627,7 @@ class TLSRequirerCharm(CharmBase):
         stored_csr = stored_csr_secret.get_content(refresh=True)["csr"]
         requested_csrs = self.certificates.get_certificate_signing_requests()
         for requested_csr in requested_csrs:
-            if requested_csr.csr == stored_csr:
+            if requested_csr.csr.strip() == stored_csr.strip():
                 return True
         return False
 
@@ -644,7 +643,7 @@ class TLSRequirerCharm(CharmBase):
         stored_csr = stored_csr_secret.get_content(refresh=True)["csr"]
         requested_csrs = self.certificates.get_certificate_signing_requests()
         for requested_csr in requested_csrs:
-            if requested_csr.csr == stored_csr:
+            if requested_csr.csr.strip() == stored_csr.strip():
                 return True
         return False
 
