@@ -374,7 +374,7 @@ class TestCharmUnitMode(unittest.TestCase):
 
     @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
-    def test_given_certificate_already_stored_when_different_certificate_available_then_certificate_is_overwritten(  # noqa: E501
+    def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self,
         patch_get_assigned_certificates
     ):
@@ -940,7 +940,7 @@ class TestCharmAppMode(unittest.TestCase):
 
     @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
-    def test_given_certificate_already_stored_when_different_certificate_available_then_certificate_is_overwritten(  # noqa: E501
+    def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self,
         patch_get_assigned_certificates
     ):
