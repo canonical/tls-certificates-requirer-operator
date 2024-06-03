@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from certificates import Certificate
@@ -19,7 +20,17 @@ SELF_SIGNED_CERTIFICATES_CHARM_NAME = "self-signed-certificates"
 NUM_UNITS = 3
 
 
-async def wait_for_certificate_available(ops_test: OpsTest, unit_name: str) -> dict:
+
+async def wait_for_certificate_available(
+    ops_test: OpsTest,
+    unit_name: str,
+    sans_dns: list[str],
+    email_address: Optional[str] = None,
+    organization_name: Optional[str] = None,
+    country_name: Optional[str] = None,
+    state_or_province_name: Optional[str] = None,
+    locality_name: Optional[str] = None,
+) -> str:
     """Run the `get-certificate` action until it returns a certificate.
 
     If the action does not return a certificate within 60 seconds, a TimeoutError is raised.
@@ -34,10 +45,28 @@ async def wait_for_certificate_available(ops_test: OpsTest, unit_name: str) -> d
             action_uuid=action.entity_id,
             wait=30,
         )
-        logger.info("Action output: %s", action_output)
-        if action_output["return-code"] == 0:
-            return action_output
-        time.sleep(1)
+        if action_output["return-code"] != 0:
+            logger.info("Action failed")
+            time.sleep(1)
+            continue
+        certificate = action_output.get("certificate", None)
+        if not certificate:
+            logger.info("Certificate is empty")
+            time.sleep(1)
+            continue
+        cert_obj = Certificate(certificate)
+        if not cert_obj.has_attributes(
+            email_address=email_address,
+            organization_name=organization_name,
+            country_name=country_name,
+            state_or_province_name=state_or_province_name,
+            locality_name=locality_name,
+            sans_dns=sans_dns,
+        ):
+            logger.info("Certificate does not have the expected attributes")
+            time.sleep(1)
+            continue
+        return certificate
     raise TimeoutError("Timed out waiting for certificate")
 
 
@@ -78,6 +107,7 @@ class TestTLSRequirerUnitMode:
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
             channel="stable",
         )
+        await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})
         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
         yield
         remove_coroutines = [
@@ -128,24 +158,51 @@ class TestTLSRequirerUnitMode:
         deploy,
     ):
         for unit in range(NUM_UNITS):
-            action_output = await wait_for_certificate_available(
-                ops_test=ops_test, unit_name=f"{self.APP_NAME}/{unit}"
+            await wait_for_certificate_available(
+                ops_test=ops_test,
+                unit_name=f"{self.APP_NAME}/{unit}",
+                email_address=None,
+                organization_name="Canonical",
+                country_name="GB",
+                state_or_province_name="London",
+                locality_name="London",
+                sans_dns=["example.com", "example.org"],
             )
 
-            assert action_output["certificate"] is not None
-            assert action_output["ca-certificate"] is not None
-            assert action_output["csr"] is not None
 
-            certificate = Certificate(action_output["certificate"])
+    async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
+            self, ops_test, deploy
+    ):
+        assert ops_test.model
+        await ops_test.model.wait_for_idle(
+            apps=[self.APP_NAME],
+            status="active",
+            timeout=1000,
+        )
 
-            assert certificate.organization_name == "Canonical"
-            assert certificate.country_name == "GB"
-            assert certificate.state_or_province_name == "London"
-            assert certificate.locality_name == "London"
-            assert certificate.email_address is None
-            assert len(certificate.sans_dns) == 2
-            assert "example.com" in certificate.sans_dns
-            assert "example.org" in certificate.sans_dns
+        tls_requirer_app = ops_test.model.applications[self.APP_NAME]
+
+        await tls_requirer_app.set_config(
+            {
+                "organization_name": "Ubuntu",
+                "email_address": "pizza@canonical.com",
+                "country_name": "CA",
+                "state_or_province_name": "Quebec",
+                "locality_name": "Montreal",
+            }
+        )
+
+        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
+        await wait_for_certificate_available(
+            ops_test=ops_test,
+            unit_name=leader_unit.name,
+            email_address="pizza@canonical.com",
+            organization_name="Ubuntu",
+            country_name="CA",
+            state_or_province_name="Quebec",
+            locality_name="Montreal",
+            sans_dns=["example.com", "example.org"],
+        )
 
 
 class TestTLSRequirerAppMode:
@@ -229,21 +286,48 @@ class TestTLSRequirerAppMode:
         deploy,
     ):
         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
-        action_output = await wait_for_certificate_available(
-            ops_test=ops_test, unit_name=leader_unit.name
+        await wait_for_certificate_available(
+            ops_test=ops_test,
+            unit_name=leader_unit.name,
+            email_address=None,
+            organization_name="Canonical",
+            country_name="GB",
+            state_or_province_name="London",
+            locality_name="London",
+            sans_dns=["example.com", "example.org"],
         )
 
-        assert action_output["certificate"] is not None
-        assert action_output["ca-certificate"] is not None
-        assert action_output["csr"] is not None
+    async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
+            self, ops_test, deploy
+    ):
+        assert ops_test.model
+        await ops_test.model.wait_for_idle(
+            apps=[self.APP_NAME],
+            status="active",
+            timeout=1000,
+        )
 
-        certificate = Certificate(action_output["certificate"])
+        tls_requirer_app = ops_test.model.applications[self.APP_NAME]
 
-        assert certificate.organization_name == "Canonical"
-        assert certificate.country_name == "GB"
-        assert certificate.state_or_province_name == "London"
-        assert certificate.locality_name == "London"
-        assert certificate.email_address is None
-        assert len(certificate.sans_dns) == 2
-        assert "example.com" in certificate.sans_dns
-        assert "example.org" in certificate.sans_dns
+        await tls_requirer_app.set_config(
+            {
+                "organization_name": "Ubuntu",
+                "email_address": "ubuntu@pizza.com",
+                "country_name": "CA",
+                "state_or_province_name": "Quebec",
+                "locality_name": "Montreal",
+            }
+        )
+
+        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
+
+        await wait_for_certificate_available(
+            ops_test=ops_test,
+            unit_name=leader_unit.name,
+            email_address="ubuntu@pizza.com",
+            organization_name="Ubuntu",
+            country_name="CA",
+            state_or_province_name="Quebec",
+            locality_name="Montreal",
+            sans_dns=["example.com", "example.org"],
+        )
