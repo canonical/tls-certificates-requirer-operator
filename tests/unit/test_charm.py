@@ -489,7 +489,6 @@ class TestCharmUnitMode(unittest.TestCase):
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
         self,
     ):
-        self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={
@@ -515,7 +514,6 @@ class TestCharmUnitMode(unittest.TestCase):
     def test_given_csr_stored_when_relation_joined_then_csr_not_generated_again(
         self, patch_generate_csr
     ):
-        self.harness.set_leader(is_leader=True)
         self._add_model_secret(
             owner=self.harness.model.unit.name,
             content={"csr": self.csr.decode()},
@@ -552,6 +550,97 @@ class TestCharmUnitMode(unittest.TestCase):
         secret_content = secret.get_content(refresh=True)
         self.assertEqual(secret_content["csr"], self.csr.decode())
         patch_generate_csr.assert_not_called()
+
+
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
+    )
+    @patch("charm.generate_csr")
+    def test_given_csr_stored_when_config_changed_then_new_certificate_is_requested(
+        self,
+        patch_generate_csr,
+        patch_request_certificate_creation
+    ):
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={"csr": self.csr.decode()},
+            label="csr-0",
+        )
+        self._add_model_secret(
+            owner=self.harness.model.unit.name,
+            content={
+                "private-key": self.private_key.decode(),
+                "private-key-password": PRIVATE_KEY_PASSWORD,
+            },
+            label="private-key-0",
+        )
+        self.harness.update_config(
+            {
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            }
+        )
+
+        relation_id = self.harness.add_relation(
+            relation_name="certificates", remote_app="certificates-provider"
+        )
+
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="certificates-provider/0"
+        )
+
+        new_common_name = "ubuntu.com"
+        new_email_address = "new@ubuntu.com"
+        new_organization_name = "Ubuntu"
+        new_country_name = "US"
+        new_state_or_province_name = "CA"
+        new_locality_name = "SF"
+        new_csr = generate_csr(
+            sans_dns=[new_common_name],
+            common_name=new_common_name,
+            organization_name=new_organization_name,
+            email_address=new_email_address,
+            country_name=new_country_name,
+            state_or_province_name=new_state_or_province_name,
+            locality_name=new_locality_name,
+            private_key=self.private_key,
+            private_key_password=PRIVATE_KEY_PASSWORD.encode(),
+        )
+        patch_generate_csr.return_value = new_csr
+
+        self.harness.update_config(
+            {
+                "common_name": new_common_name,
+                "sans_dns": new_common_name,
+                "organization_name": new_organization_name,
+                "email_address": new_email_address,
+                "country_name": new_country_name,
+                "state_or_province_name": new_state_or_province_name,
+                "locality_name": new_locality_name,
+            }
+        )
+        patch_generate_csr.assert_called_with(
+            private_key=self.private_key,
+            private_key_password=PRIVATE_KEY_PASSWORD.encode(),
+            subject=new_common_name,
+            sans_dns=[new_common_name],
+            organization=new_organization_name,
+            email_address=new_email_address,
+            country_name=new_country_name,
+            state_or_province_name=new_state_or_province_name,
+            locality_name=new_locality_name,
+        )
+        csr_secret = self.harness.model.get_secret(label="csr-0").get_content(refresh=True)
+        self.assertEqual(csr_secret["csr"], new_csr.decode())
+
+        patch_request_certificate_creation.assert_called_with(
+            certificate_signing_request=new_csr
+        )
 
     @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505)
     )
@@ -1108,8 +1197,15 @@ class TestCharmAppMode(unittest.TestCase):
         self.assertEqual(secret_content["csr"], self.csr.decode())
         patch_generate_csr.assert_not_called()
 
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
+    )
     @patch("charm.generate_csr")
-    def test_given_csr_stored_when_config_changed_then_new_csr_is_stored(self, patch_generate_csr):
+    def test_given_csr_stored_when_config_changed_then_new_certificate_is_requested(
+        self,
+        patch_generate_csr,
+        patch_request_certificate_creation
+    ):
         self._add_model_secret(
             owner=self.harness.model.app.name,
             content={"csr": self.csr.decode()},
@@ -1187,13 +1283,17 @@ class TestCharmAppMode(unittest.TestCase):
         csr_secret = self.harness.model.get_secret(label="csr").get_content(refresh=True)
         self.assertEqual(csr_secret["csr"], new_csr.decode())
 
+        patch_request_certificate_creation.assert_called_with(
+            certificate_signing_request=new_csr
+        )
+
 
     @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
-    def test_given_certificate_is_requested_when_configure_then_certificate_not_requested_again(
+    def test_given_certificate_requested_when_configure_then_certificate_not_requested_again(
         self,
         patch_request_certificate_creation,
         patch_get_certificate_signing_requests,
