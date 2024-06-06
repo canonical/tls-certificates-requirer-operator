@@ -19,10 +19,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from jsonschema import exceptions, validate
-from ops.charm import (
-    CharmBase,
-    CharmEvents,
-)
+from ops import BoundEvent, CharmBase, CharmEvents, SecretExpiredEvent
 from ops.framework import EventBase, EventSource, Handle, Object
 from ops.jujuversion import JujuVersion
 from ops.model import (
@@ -935,9 +932,6 @@ class CertificatesRequirerCharmEvents(CharmEvents):
     """List of events that the TLS Certificates requirer charm can leverage."""
 
     certificate_available = EventSource(CertificateAvailableEvent)
-    certificate_expiring = EventSource(CertificateExpiringEvent)
-    certificate_invalidated = EventSource(CertificateInvalidatedEvent)
-    all_certificates_invalidated = EventSource(AllCertificatesInvalidatedEvent)
 
 
 class TLSCertificatesRequiresPerUnitV4(Object):
@@ -955,6 +949,7 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         relationship_name: str,
         certificate_requests: List[CertificateRequest],
         expiry_notification_time: Optional[int] = None,
+        refresh_events: List[BoundEvent] = [],
     ):
         super().__init__(charm, relationship_name)
         if not JujuVersion.from_environ().has_secrets:
@@ -970,6 +965,9 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         self.framework.observe(
             charm.on[relationship_name].relation_changed, self._configure
         )
+        self.framework.observe(charm.on.secret_expired, self._on_secret_expired)
+        for event in refresh_events:
+            self.framework.observe(event, self._configure)
 
     def _configure(self, _: EventBase):
         """Handle TLS Certificates Relation Data.
@@ -985,6 +983,57 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         self._generate_private_key()
         self._send_certificate_requests()
         self._find_available_certificates()
+        self._cleanup_certificate_requests()
+
+    def _on_secret_expired(self, event: SecretExpiredEvent) -> None:
+        """Handle Secret Expired Event.
+
+        Renews certificate requests and removes the expired secret.
+        """
+        if not event.secret.label or not event.secret.label.startswith(f"{LIBID}-certificate"):
+            return
+        csr = event.secret.get_content()["csr"]
+        provider_certificate = self._find_certificate_in_relation_data(csr)
+        if provider_certificate and provider_certificate.expiry_time:
+            self._renew_certificate_request(csr)
+        event.secret.remove_all_revisions()
+
+    def _renew_certificate_request(self, csr: str):
+        """Remove existing CSR from relation data and create a new one."""
+        self._remove_requirer_csr_from_relation_data(csr)
+        self._send_certificate_requests()
+
+    def _remove_requirer_csr_from_relation_data(self, csr: str) -> None:
+        """Remove CSR from relation data.
+
+        Args:
+            csr (str): Certificate signing request
+
+        Returns:
+            None
+        """
+        relation = self.model.get_relation(self.relationship_name)
+        if not relation:
+            raise RuntimeError(
+                f"Relation {self.relationship_name} does not exist - "
+                f"The certificate request can't be completed"
+            )
+        if not self.get_requirer_csrs():
+            logger.info("No CSRs in relation data - Doing nothing")
+            return
+        requirer_relation_data = _load_relation_data(relation.data[self.model.unit])
+        existing_relation_data = requirer_relation_data.get("certificate_signing_requests", [])
+        new_relation_data = copy.deepcopy(existing_relation_data)
+        for requirer_csr in new_relation_data:
+            if requirer_csr["certificate_signing_request"] == csr:
+                new_relation_data.remove(requirer_csr)
+        try:
+            relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(
+                new_relation_data
+            )
+            logger.info("Removed CSR from relation data")
+        except ModelError:
+            logger.warning("Failed to update relation data")
 
     @property
     def private_key(self) -> Optional[str]:
@@ -992,7 +1041,7 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         if not self._private_key_generated():
             return None
         secret = self.charm.model.get_secret(
-            label=self._get_unit_private_key_secret_label()
+            label=self._get_private_key_secret_label()
         )
         private_key = secret.get_content()["private-key"]
         return private_key
@@ -1002,19 +1051,34 @@ class TLSCertificatesRequiresPerUnitV4(Object):
             return
         private_key = generate_private_key()
         self.charm.unit.add_secret(
-            {"private-key": private_key.decode()},
-            label=self._get_unit_private_key_secret_label(),
+            content={"private-key": private_key.decode()},
+            label=self._get_private_key_secret_label(),
         )
         logger.info("private key generated for unit")
 
     def _private_key_generated(self) -> bool:
         try:
             self.charm.model.get_secret(
-                label=self._get_unit_private_key_secret_label()
+                label=self._get_private_key_secret_label()
             )
         except SecretNotFoundError:
             return False
         return True
+
+    def _csr_matches_request(self, csr: str):
+        for certificate_request in self.certificate_requests:
+            if csr_has_attributes(
+                csr=csr,
+                common_name=certificate_request.common_name,
+                sans_dns=certificate_request.sans_dns,
+                organization=certificate_request.organization,
+                email_address=certificate_request.email_address,
+                country_name=certificate_request.country_name,
+                state_or_province_name=certificate_request.state_or_province_name,
+                locality_name=certificate_request.locality_name,
+            ):
+                return True
+        return False
 
     def _certificate_requested(self, certificate_request: CertificateRequest) -> bool:
         if not self.private_key:
@@ -1140,10 +1204,13 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         existing_relation_data = requirer_relation_data.get("certificate_signing_requests", [])
         new_relation_data = copy.deepcopy(existing_relation_data)
         new_relation_data.append(new_csr_dict)
-        relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(
-            new_relation_data
-        )
-        logger.info("Certificate signing request added to relation data.")
+        try:
+            relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(
+                new_relation_data
+            )
+            logger.info("Certificate signing request added to relation data.")
+        except ModelError:
+            logger.warning("Failed to update relation data")
 
     def _send_certificate_requests(self):
         if not self.private_key:
@@ -1256,42 +1323,42 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         provider_certificates = self.get_provider_certificates()
         for certificate in provider_certificates:
             if certificate.csr in requirer_csrs:
-                csr_in_sha256_hex = get_sha256_hex(certificate.csr)
+                secret_label = self._get_csr_secret_label(certificate.csr)
                 if certificate.revoked:
                     with suppress(SecretNotFoundError):
                         logger.debug(
                             "Removing secret with label %s",
-                            f"{LIBID}-{csr_in_sha256_hex}",
+                            secret_label,
                         )
                         secret = self.model.get_secret(
-                            label=f"{LIBID}-{csr_in_sha256_hex}")
+                            label=secret_label)
                         secret.remove_all_revisions()
-                    self.on.certificate_invalidated.emit(
-                        reason="revoked",
-                        certificate=certificate.certificate,
-                        certificate_signing_request=certificate.csr,
-                        ca=certificate.ca,
-                        chain=certificate.chain,
-                    )
                 else:
-                    try:
+                    if not self._csr_matches_request(certificate.csr):
                         logger.debug(
-                            "Setting secret with label %s", f"{LIBID}-{csr_in_sha256_hex}"
+                            "Certificate requested for different attributes - Skipping"
                         )
-                        secret = self.model.get_secret(label=f"{LIBID}-{csr_in_sha256_hex}")
+                        continue
+                    try:
+                        logger.debug("Setting secret with label %s", secret_label)
+                        secret = self.model.get_secret(label=secret_label)
                         secret.set_content(
-                            {"certificate": certificate.certificate, "csr": certificate.csr}
+                            content={
+                                "certificate": certificate.certificate,
+                                "csr": certificate.csr
+                            }
                         )
                         secret.set_info(
                             expire=self._get_next_secret_expiry_time(certificate),
                         )
                     except SecretNotFoundError:
-                        logger.debug(
-                            "Creating new secret with label %s", f"{LIBID}-{csr_in_sha256_hex}"
-                        )
+                        logger.debug("Creating new secret with label %s", secret_label)
                         secret = self.charm.unit.add_secret(
-                            {"certificate": certificate.certificate, "csr": certificate.csr},
-                            label=f"{LIBID}-{csr_in_sha256_hex}",
+                            content={
+                                "certificate": certificate.certificate,
+                                "csr": certificate.csr
+                            },
+                            label=secret_label,
                             expire=self._get_next_secret_expiry_time(certificate),
                         )
                     self.on.certificate_available.emit(
@@ -1300,6 +1367,12 @@ class TLSCertificatesRequiresPerUnitV4(Object):
                         ca=certificate.ca,
                         chain=certificate.chain,
                     )
+
+    def _cleanup_certificate_requests(self):
+        """Remove certificate requests that have been fulfilled."""
+        for requirer_csr in self.get_certificate_signing_requests():
+            if not self._csr_matches_request(requirer_csr.csr):
+                self._remove_requirer_csr_from_relation_data(requirer_csr.csr)
 
     def _get_next_secret_expiry_time(self, certificate: ProviderCertificate) -> Optional[datetime]:
         """Return the expiry time or expiry notification time.
@@ -1328,8 +1401,12 @@ class TLSCertificatesRequiresPerUnitV4(Object):
             return False
         return True
 
-    def _get_unit_private_key_secret_label(self) -> str:
-        return f"private-key-{self._get_unit_number()}"
+    def _get_private_key_secret_label(self) -> str:
+        return f"{LIBID}-private-key-{self._get_unit_number()}"
+
+    def _get_csr_secret_label(self, csr: str) -> str:
+        csr_in_sha256_hex = get_sha256_hex(csr)
+        return f"{LIBID}-certificate-{self._get_unit_number()}-{csr_in_sha256_hex}"
 
     def _get_unit_number(self) -> str:
         return self.model.unit.name.split("/")[1]

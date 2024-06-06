@@ -45,6 +45,7 @@ class TLSRequirerCharm(CharmBase):
                 charm=self,
                 relationship_name="certificates",
                 certificate_requests = [self._certificate_request],
+                refresh_events=[self.on.config_changed],
             )
             self.framework.observe(
                 self.unit_certificates.on.certificate_available, self._configure

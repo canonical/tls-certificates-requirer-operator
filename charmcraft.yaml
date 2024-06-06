@@ -47,6 +47,7 @@ parts:
 requires:
   certificates:
     interface: tls-certificates
+    limit: 1
 
 config:
   options:
