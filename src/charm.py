@@ -8,20 +8,15 @@ import logging
 import secrets
 from typing import List, Optional, cast
 
-from charms.tls_certificates_interface.v3.tls_certificates import (
-    TLSCertificatesRequiresV3,
-    generate_csr,
-    generate_private_key,
-)
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
+    TLSCertificatesRequiresPerAppV4,
     TLSCertificatesRequiresPerUnitV4,
-    csr_has_attributes,
 )
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
 from ops.framework import EventBase
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBase, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBase
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +26,7 @@ class TLSRequirerCharm(CharmBase):
     def __init__(self, *args):
         """Handle events for certificate management."""
         super().__init__(*args)
-        if self._mode == "unit":
-            self._certificate_request = CertificateRequest(
+        self._certificate_request = CertificateRequest(
                 common_name=self._get_common_name(),
                 sans_dns=self._get_config_sans_dns(),
                 organization=self._get_config_organization_name(),
@@ -41,6 +35,7 @@ class TLSRequirerCharm(CharmBase):
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
+        if self._mode == "unit":
             self.unit_certificates = TLSCertificatesRequiresPerUnitV4(
                 charm=self,
                 relationship_name="certificates",
@@ -51,10 +46,15 @@ class TLSRequirerCharm(CharmBase):
                 self.unit_certificates.on.certificate_available, self._configure
             )
         elif self._mode == "app":
-            self.app_certificates = TLSCertificatesRequiresV3(self, "certificates")
+            self.app_certificates = TLSCertificatesRequiresPerAppV4(
+                charm=self,
+                relationship_name="certificates",
+                certificate_requests = [self._certificate_request],
+                refresh_events=[self.on.config_changed],
+            )
             self.framework.observe(
-            self.app_certificates.on.certificate_available, self._configure
-        )
+                self.app_certificates.on.certificate_available, self._configure
+            )
         else:
             raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
@@ -63,8 +63,7 @@ class TLSRequirerCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._configure)
         self.framework.observe(self.on.certificates_relation_joined, self._configure)
         self.framework.observe(
-            self.on.certificates_relation_broken,
-            self._on_certificates_relation_broken,
+            self.on.certificates_relation_broken, self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
 
@@ -124,16 +123,10 @@ class TLSRequirerCharm(CharmBase):
 
     def _collect_status_app_mode(self) -> StatusBase:
         """Collect status for the app mode."""
-        if not self._app_private_key_is_stored:
-            return WaitingStatus("Waiting for app private key to be generated")
-        if not self._app_csr_secret_exists:
-            return WaitingStatus("Waiting for app CSR to be generated")
         if not self._certificates_relation_created:
             return ActiveStatus()
-        if not self._app_certificate_is_requested():
-            return ActiveStatus("Certificate relation is created")
         if not self._app_certificate_is_stored():
-            return ActiveStatus("App certificate request is sent")
+            return ActiveStatus("Waiting for app certificate")
         return ActiveStatus("App certificate is available")
 
     def _configure(self, event: EventBase) -> None:
@@ -158,30 +151,8 @@ class TLSRequirerCharm(CharmBase):
         """Manage certificate lifecycle when they are managed per application."""
         if not self.unit.is_leader():
             return
-        if not self._app_private_key_is_stored:
-            self._generate_app_private_key()
-        if not self._app_csr_secret_exists or not self._app_csr_has_attributes(
-            common_name=self._get_common_name(),
-            sans_dns=self._get_config_sans_dns(),
-            organization=self._get_config_organization_name(),
-            email_address=self._get_config_email_address(),
-            country_name=self._get_config_country_name(),
-            state_or_province_name=self._get_config_state_or_province_name(),
-            locality_name=self._get_config_locality_name(),
-        ):
-            self._generate_app_csr(
-                common_name=self._get_common_name(),
-                sans_dns=self._get_config_sans_dns(),
-                organization=self._get_config_organization_name(),
-                email_address=self._get_config_email_address(),
-                country_name=self._get_config_country_name(),
-                state_or_province_name=self._get_config_state_or_province_name(),
-                locality_name=self._get_config_locality_name(),
-            )
         if not self._certificates_relation_created:
             return
-        if not self._app_certificate_is_requested():
-            self._request_app_certificate()
         if not self._app_certificate_is_stored():
             self._store_app_certificate()
 
@@ -229,19 +200,12 @@ class TLSRequirerCharm(CharmBase):
             label=self._get_app_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate = self._get_assigned_app_certificate()
+        assigned_certificate = self.app_certificates.get_assigned_certificate(
+            self._certificate_request
+        )
         if not assigned_certificate:
             return False
         return assigned_certificate.certificate.strip() == stored_certificate.strip()
-
-    def _get_assigned_app_certificate(self):
-        csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
-        csr_secret_content = csr_secret.get_content(refresh=True)
-        provider_certificates = self.app_certificates.get_assigned_certificates()
-        for certificate in provider_certificates:
-            if certificate.csr.strip() == csr_secret_content["csr"].strip():
-                return certificate
-        return None
 
     def _store_unit_certificate(self) -> None:
         """Store the assigned unit certificate in a Juju secret."""
@@ -274,7 +238,9 @@ class TLSRequirerCharm(CharmBase):
         """Store the assigned app certificate in a Juju secret."""
         if not self.unit.is_leader():
             return
-        assigned_certificate = self._get_assigned_app_certificate()
+        assigned_certificate = self.app_certificates.get_assigned_certificate(
+            self._certificate_request
+        )
         if not assigned_certificate:
             logger.info("No app certificate is assigned")
             return
@@ -296,19 +262,6 @@ class TLSRequirerCharm(CharmBase):
             return
         certificate_secret.set_content(content=certificate_secret_content)
         logger.info("App certificate is updated: %s", assigned_certificate.certificate)
-
-    def _generate_app_private_key(self):
-        """Generate private key and store it in Juju secret."""
-        private_key_password = generate_password()
-        private_key = generate_private_key(password=private_key_password.encode())
-        self.app.add_secret(
-            content={
-                "private-key-password": private_key_password,
-                "private-key": private_key.decode(),
-            },
-            label=self._get_app_private_key_secret_label(),
-        )
-        logger.info("App private key generated")
 
     def _get_common_name(self) -> str:
         """Return common name.
@@ -391,105 +344,6 @@ class TLSRequirerCharm(CharmBase):
         if not value or not isinstance(value, str):
             return None
         return value
-
-    def _request_app_certificate(self) -> None:
-        """Request X.509 certificate for app.
-
-        Retrieves app private key and password from Juju secret, generates a certificate
-        signing request (CSR) and inserts it into the `certificates` relation app relation data.
-        """
-        if not self._app_csr_secret_exists:
-            raise RuntimeError("App CSR is not stored")
-        csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
-        csr_secret_content = csr_secret.get_content(refresh=True)
-        self.app_certificates.request_certificate_creation(
-            certificate_signing_request=csr_secret_content["csr"].encode()
-        )
-        logger.info("App certificate request sent")
-
-    def _generate_app_csr(
-            self,
-            common_name: str,
-            sans_dns: List[str],
-            organization: Optional[str],
-            email_address: Optional[str],
-            country_name: Optional[str],
-            state_or_province_name: Optional[str],
-            locality_name: Optional[str],
-        ) -> None:
-        """Generate app CSR based on private key and stores it in Juju secret."""
-        if not self._app_private_key_is_stored:
-            raise RuntimeError("Private key not stored.")
-        private_key_secret = self.model.get_secret(label=self._get_app_private_key_secret_label())
-        private_key_secret_content = private_key_secret.get_content(refresh=True)
-        csr = generate_csr(
-            private_key=private_key_secret_content["private-key"].encode(),
-            private_key_password=private_key_secret_content["private-key-password"].encode(),
-            subject=common_name,
-            sans_dns=sans_dns,
-            organization=organization,
-            email_address=email_address,
-            country_name=country_name,
-            state_or_province_name=state_or_province_name,
-            locality_name=locality_name,
-        )
-        csr_secret_content = {"csr": csr.decode()}
-        try:
-            csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
-        except SecretNotFoundError:
-            self.app.add_secret(content=csr_secret_content, label=self._get_app_csr_secret_label())
-            logger.info("App CSR secret created")
-            return
-        csr_secret.set_content(content=csr_secret_content)
-        logger.info("App CSR secret updated")
-
-    def _app_csr_has_attributes(
-        self,
-        common_name: str,
-        sans_dns: List[str],
-        organization: Optional[str],
-        email_address: Optional[str],
-        country_name: Optional[str],
-        state_or_province_name: Optional[str],
-        locality_name: Optional[str],
-    ) -> bool:
-        secret = self.model.get_secret(label=self._get_app_csr_secret_label())
-        content = secret.get_content(refresh=True)
-        csr = content["csr"]
-        return csr_has_attributes(
-            csr=csr,
-            common_name=common_name,
-            sans_dns=sans_dns,
-            organization=organization,
-            email_address=email_address,
-            country_name=country_name,
-            state_or_province_name=state_or_province_name,
-            locality_name=locality_name,
-        )
-
-    def _app_certificate_is_requested(self) -> bool:
-        """Return whether app certificate request is made.
-
-        Compare certificate requests in the TLS relation data
-        with the CSR stored in the Juju secret.
-        """
-        if not self._app_csr_secret_exists:
-            raise RuntimeError("App CSR is not stored")
-        stored_csr_secret = self.model.get_secret(label=self._get_app_csr_secret_label())
-        stored_csr = stored_csr_secret.get_content(refresh=True)["csr"]
-        requested_csrs = self.app_certificates.get_certificate_signing_requests()
-        for requested_csr in requested_csrs:
-            if requested_csr.csr.strip() == stored_csr.strip():
-                return True
-        return False
-
-    @property
-    def _app_private_key_is_stored(self) -> bool:
-        return self._secret_exists(label=self._get_app_private_key_secret_label())
-
-    @property
-    def _app_csr_secret_exists(self) -> bool:
-        return self._secret_exists(label=self._get_app_csr_secret_label())
 
     @property
     def _unit_certificate_secret_exists(self) -> bool:
