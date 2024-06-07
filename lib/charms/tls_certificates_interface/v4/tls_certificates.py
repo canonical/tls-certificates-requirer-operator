@@ -11,7 +11,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from ipaddress import IPv4Address
-from typing import List, Literal, Optional, Union
+from typing import List, Optional, Union
 
 from cryptography import x509
 from cryptography.hazmat._oid import ExtensionOID
@@ -223,149 +223,6 @@ class CertificateAvailableEvent(EventBase):
         return "\n\n".join(reversed(self.chain))
 
 
-class CertificateExpiringEvent(EventBase):
-    """Charm Event triggered when a TLS certificate is almost expired."""
-
-    def __init__(self, handle, certificate: str, expiry: str):
-        """CertificateExpiringEvent.
-
-        Args:
-            handle (Handle): Juju framework handle
-            certificate (str): TLS Certificate
-            expiry (str): Datetime string representing the time at which the certificate
-                won't be valid anymore.
-        """
-        super().__init__(handle)
-        self.certificate = certificate
-        self.expiry = expiry
-
-    def snapshot(self) -> dict:
-        """Return snapshot."""
-        return {"certificate": self.certificate, "expiry": self.expiry}
-
-    def restore(self, snapshot: dict):
-        """Restore snapshot."""
-        self.certificate = snapshot["certificate"]
-        self.expiry = snapshot["expiry"]
-
-
-class CertificateInvalidatedEvent(EventBase):
-    """Charm Event triggered when a TLS certificate is invalidated."""
-
-    def __init__(
-        self,
-        handle: Handle,
-        reason: Literal["expired", "revoked"],
-        certificate: str,
-        certificate_signing_request: str,
-        ca: str,
-        chain: List[str],
-    ):
-        super().__init__(handle)
-        self.reason = reason
-        self.certificate_signing_request = certificate_signing_request
-        self.certificate = certificate
-        self.ca = ca
-        self.chain = chain
-
-    def snapshot(self) -> dict:
-        """Return snapshot."""
-        return {
-            "reason": self.reason,
-            "certificate_signing_request": self.certificate_signing_request,
-            "certificate": self.certificate,
-            "ca": self.ca,
-            "chain": self.chain,
-        }
-
-    def restore(self, snapshot: dict):
-        """Restore snapshot."""
-        self.reason = snapshot["reason"]
-        self.certificate_signing_request = snapshot["certificate_signing_request"]
-        self.certificate = snapshot["certificate"]
-        self.ca = snapshot["ca"]
-        self.chain = snapshot["chain"]
-
-
-class AllCertificatesInvalidatedEvent(EventBase):
-    """Charm Event triggered when all TLS certificates are invalidated."""
-
-    def __init__(self, handle: Handle):
-        super().__init__(handle)
-
-    def snapshot(self) -> dict:
-        """Return snapshot."""
-        return {}
-
-    def restore(self, snapshot: dict):
-        """Restore snapshot."""
-        pass
-
-
-class CertificateCreationRequestEvent(EventBase):
-    """Charm Event triggered when a TLS certificate is required."""
-
-    def __init__(
-        self,
-        handle: Handle,
-        certificate_signing_request: str,
-        relation_id: int,
-        is_ca: bool = False,
-    ):
-        super().__init__(handle)
-        self.certificate_signing_request = certificate_signing_request
-        self.relation_id = relation_id
-        self.is_ca = is_ca
-
-    def snapshot(self) -> dict:
-        """Return snapshot."""
-        return {
-            "certificate_signing_request": self.certificate_signing_request,
-            "relation_id": self.relation_id,
-            "is_ca": self.is_ca,
-        }
-
-    def restore(self, snapshot: dict):
-        """Restore snapshot."""
-        self.certificate_signing_request = snapshot["certificate_signing_request"]
-        self.relation_id = snapshot["relation_id"]
-        self.is_ca = snapshot["is_ca"]
-
-
-class CertificateRevocationRequestEvent(EventBase):
-    """Charm Event triggered when a TLS certificate needs to be revoked."""
-
-    def __init__(
-        self,
-        handle: Handle,
-        certificate: str,
-        certificate_signing_request: str,
-        ca: str,
-        chain: str,
-    ):
-        super().__init__(handle)
-        self.certificate = certificate
-        self.certificate_signing_request = certificate_signing_request
-        self.ca = ca
-        self.chain = chain
-
-    def snapshot(self) -> dict:
-        """Return snapshot."""
-        return {
-            "certificate": self.certificate,
-            "certificate_signing_request": self.certificate_signing_request,
-            "ca": self.ca,
-            "chain": self.chain,
-        }
-
-    def restore(self, snapshot: dict):
-        """Restore snapshot."""
-        self.certificate = snapshot["certificate"]
-        self.certificate_signing_request = snapshot["certificate_signing_request"]
-        self.ca = snapshot["ca"]
-        self.chain = snapshot["chain"]
-
-
 def _load_relation_data(relation_data_content: RelationDataContent) -> dict:
     """Load relation data from the relation data bag.
 
@@ -463,13 +320,11 @@ def calculate_expiry_notification_time(
     validity_start_time: datetime,
     expiry_time: datetime,
     provider_recommended_notification_time: Optional[int],
-    requirer_recommended_notification_time: Optional[int],
 ) -> datetime:
     """Calculate a reasonable time to notify the user about the certificate expiry.
 
-    It takes into account the time recommended by the provider and by the requirer.
+    It takes into account the time recommended by the provider.
     Time recommended by the provider is preferred,
-    then time recommended by the requirer,
     then dynamically calculated time.
 
     Args:
@@ -478,9 +333,6 @@ def calculate_expiry_notification_time(
         provider_recommended_notification_time:
             Time in hours prior to expiry to notify the user.
             Recommended by the provider.
-        requirer_recommended_notification_time:
-            Time in hours prior to expiry to notify the user.
-            Recommended by the requirer.
 
     Returns:
         datetime: Time to notify the user about the certificate expiry.
@@ -492,14 +344,6 @@ def calculate_expiry_notification_time(
         )
         if validity_start_time < provider_recommendation_time_delta:
             return provider_recommendation_time_delta
-
-    if requirer_recommended_notification_time is not None:
-        requirer_recommended_notification_time = abs(requirer_recommended_notification_time)
-        requirer_recommendation_time_delta = (
-            expiry_time - timedelta(hours=requirer_recommended_notification_time)
-        )
-        if validity_start_time < requirer_recommendation_time_delta:
-            return requirer_recommendation_time_delta
     calculated_hours = (expiry_time - validity_start_time).total_seconds() / (3600 * 3)
     return expiry_time - timedelta(hours=calculated_hours)
 
@@ -948,7 +792,6 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         charm: CharmBase,
         relationship_name: str,
         certificate_requests: List[CertificateRequest],
-        expiry_notification_time: Optional[int] = None,
         refresh_events: List[BoundEvent] = [],
     ):
         super().__init__(charm, relationship_name)
@@ -956,7 +799,6 @@ class TLSCertificatesRequiresPerUnitV4(Object):
             logger.warning("This version of the TLS library requires Juju secrets (Juju >= 3.0)")
         self.charm = charm
         self.relationship_name = relationship_name
-        self.expiry_notification_time = expiry_notification_time
         self.certificate_requests = certificate_requests
         self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(
@@ -1167,7 +1009,6 @@ class TLSCertificatesRequiresPerUnitV4(Object):
                 validity_start_time=validity_start_time,
                 expiry_time=expiry_time,
                 provider_recommended_notification_time=recommended_expiry_notification_time,
-                requirer_recommended_notification_time=self.expiry_notification_time,
             )
             if not csr:
                 logger.warning("No CSR found in relation data - Skipping")
@@ -1425,7 +1266,6 @@ class TLSCertificatesRequiresPerAppV4(Object):
         charm: CharmBase,
         relationship_name: str,
         certificate_requests: List[CertificateRequest],
-        expiry_notification_time: Optional[int] = None,
         refresh_events: List[BoundEvent] = [],
     ):
         super().__init__(charm, relationship_name)
@@ -1433,7 +1273,6 @@ class TLSCertificatesRequiresPerAppV4(Object):
             logger.warning("This version of the TLS library requires Juju secrets (Juju >= 3.0)")
         self.charm = charm
         self.relationship_name = relationship_name
-        self.expiry_notification_time = expiry_notification_time
         self.certificate_requests = certificate_requests
         self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(
@@ -1644,7 +1483,6 @@ class TLSCertificatesRequiresPerAppV4(Object):
                 validity_start_time=validity_start_time,
                 expiry_time=expiry_time,
                 provider_recommended_notification_time=recommended_expiry_notification_time,
-                requirer_recommended_notification_time=self.expiry_notification_time,
             )
             if not csr:
                 logger.warning("No CSR found in relation data - Skipping")

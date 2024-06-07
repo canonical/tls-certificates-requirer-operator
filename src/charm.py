@@ -5,7 +5,6 @@
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
 import logging
-import secrets
 from typing import List, Optional, cast
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
@@ -413,15 +412,6 @@ class TLSRequirerCharm(CharmBase):
 
     def _get_app_certificate_secret_label(self) -> str:
         return "certificate"
-
-
-def generate_password() -> str:
-    """Generate a random string containing 64 bytes.
-
-    Returns:
-        str: Password
-    """
-    return secrets.token_hex(64)
 
 
 if __name__ == "__main__":
