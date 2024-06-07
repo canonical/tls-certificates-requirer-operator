@@ -11,7 +11,7 @@ from ops import testing
 from ops.model import ActiveStatus, SecretNotFoundError
 from tls import generate_csr, generate_private_key
 
-from lib.charms.tls_certificates_interface.v3.tls_certificates import (
+from lib.charms.tls_certificates_interface.v4.tls_certificates import (
     ProviderCertificate,
 )
 

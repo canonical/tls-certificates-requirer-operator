@@ -408,12 +408,6 @@ class TLSRequirerCharm(CharmBase):
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]
 
-    def _get_app_private_key_secret_label(self) -> str:
-        return "private-key"
-
-    def _get_app_csr_secret_label(self) -> str:
-        return "csr"
-
     def _get_unit_certificate_secret_label(self) -> str:
         return f"certificate-{self._get_unit_number()}"
 
