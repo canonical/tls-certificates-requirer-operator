@@ -34,30 +34,16 @@ class TLSRequirerCharm(CharmBase):
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
-        if self._mode == "unit":
-            self.unit_certificates = TLSCertificatesRequiresV4(
-                charm=self,
-                relationship_name="certificates",
-                mode=Mode.UNIT,
-                certificate_requests = [self._certificate_request],
-                refresh_events=[self.on.config_changed],
-            )
-            self.framework.observe(
-                self.unit_certificates.on.certificate_available, self._configure
-            )
-        elif self._mode == "app":
-            self.app_certificates = TLSCertificatesRequiresV4(
-                charm=self,
-                relationship_name="certificates",
-                mode=Mode.APP,
-                certificate_requests = [self._certificate_request],
-                refresh_events=[self.on.config_changed],
-            )
-            self.framework.observe(
-                self.app_certificates.on.certificate_available, self._configure
-            )
-        else:
-            raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
+        self.certificates = TLSCertificatesRequiresV4(
+            charm=self,
+            relationship_name="certificates",
+            mode=Mode.APP if self._mode == "app" else Mode.UNIT,
+            certificate_requests = [self._certificate_request],
+            refresh_events=[self.on.config_changed],
+        )
+        self.framework.observe(
+            self.certificates.on.certificate_available, self._configure
+        )
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
         self.framework.observe(self.on.install, self._configure)
         self.framework.observe(self.on.update_status, self._configure)
@@ -184,7 +170,7 @@ class TLSRequirerCharm(CharmBase):
             label=self._get_unit_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate = self.unit_certificates.get_assigned_certificate(
+        assigned_certificate = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
@@ -201,7 +187,7 @@ class TLSRequirerCharm(CharmBase):
             label=self._get_app_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate = self.app_certificates.get_assigned_certificate(
+        assigned_certificate = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
@@ -210,7 +196,7 @@ class TLSRequirerCharm(CharmBase):
 
     def _store_unit_certificate(self) -> None:
         """Store the assigned unit certificate in a Juju secret."""
-        assigned_certificate = self.unit_certificates.get_assigned_certificate(
+        assigned_certificate = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
@@ -239,7 +225,7 @@ class TLSRequirerCharm(CharmBase):
         """Store the assigned app certificate in a Juju secret."""
         if not self.unit.is_leader():
             return
-        assigned_certificate = self.app_certificates.get_assigned_certificate(
+        assigned_certificate = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
