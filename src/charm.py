@@ -9,8 +9,8 @@ from typing import List, Optional, cast
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
-    TLSCertificatesRequiresPerAppV4,
-    TLSCertificatesRequiresPerUnitV4,
+    Mode,
+    TLSCertificatesRequiresV4,
 )
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
 from ops.framework import EventBase
@@ -35,9 +35,10 @@ class TLSRequirerCharm(CharmBase):
                 locality_name=self._get_config_locality_name(),
             )
         if self._mode == "unit":
-            self.unit_certificates = TLSCertificatesRequiresPerUnitV4(
+            self.unit_certificates = TLSCertificatesRequiresV4(
                 charm=self,
                 relationship_name="certificates",
+                mode=Mode.UNIT,
                 certificate_requests = [self._certificate_request],
                 refresh_events=[self.on.config_changed],
             )
@@ -45,9 +46,10 @@ class TLSRequirerCharm(CharmBase):
                 self.unit_certificates.on.certificate_available, self._configure
             )
         elif self._mode == "app":
-            self.app_certificates = TLSCertificatesRequiresPerAppV4(
+            self.app_certificates = TLSCertificatesRequiresV4(
                 charm=self,
                 relationship_name="certificates",
+                mode=Mode.APP,
                 certificate_requests = [self._certificate_request],
                 refresh_events=[self.on.config_changed],
             )

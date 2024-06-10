@@ -10,6 +10,7 @@ import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from ipaddress import IPv4Address
 from typing import List, Optional, Union
 
@@ -119,6 +120,10 @@ PROVIDER_JSON_SCHEMA = {
 
 logger = logging.getLogger(__name__)
 
+class Mode(Enum):
+    """Enum representing the mode of the certificate request."""
+    UNIT = 1
+    APP = 2
 
 @dataclass
 class RequirerCSR:
@@ -126,9 +131,9 @@ class RequirerCSR:
 
     relation_id: int
     application_name: str
-    unit_name: str
     csr: str
     is_ca: bool
+    unit_name: Optional[str] = None
 
 @dataclass
 class CertificateRequest:
@@ -778,7 +783,7 @@ class CertificatesRequirerCharmEvents(CharmEvents):
     certificate_available = EventSource(CertificateAvailableEvent)
 
 
-class TLSCertificatesRequiresPerUnitV4(Object):
+class TLSCertificatesRequiresV4(Object):
     """A class to manage the TLS certificates interface for a unit.
 
     Use this class if your charm's certificates are managed per unit.
@@ -792,14 +797,28 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         charm: CharmBase,
         relationship_name: str,
         certificate_requests: List[CertificateRequest],
+        mode: Mode = Mode.UNIT,
         refresh_events: List[BoundEvent] = [],
     ):
+        """Create a new instance of the TLSCertificatesRequiresV4 class.
+
+        Args:
+            charm (CharmBase): The charm instance to relate to.
+            relationship_name (str): The name of the relation that provides the certificates.
+            certificate_requests (List[CertificateRequest]): A list of certificate requests.
+            mode (Mode): The mode of the charm. Default is Mode.UNIT.
+            refresh_events (List[BoundEvent]): A list of events to trigger a refresh of
+              the certificates.
+        """
         super().__init__(charm, relationship_name)
         if not JujuVersion.from_environ().has_secrets:
             logger.warning("This version of the TLS library requires Juju secrets (Juju >= 3.0)")
+        if not self._mode_is_valid(mode):
+            raise RuntimeError("Invalid mode. Must be Mode.UNIT or Mode.APP")
         self.charm = charm
         self.relationship_name = relationship_name
         self.certificate_requests = certificate_requests
+        self.mode = mode
         self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(
             charm.on[relationship_name].relation_created, self._configure
@@ -827,6 +846,9 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         self._find_available_certificates()
         self._cleanup_certificate_requests()
 
+    def _mode_is_valid(self, mode) -> bool:
+        return mode in [Mode.UNIT, Mode.APP]
+
     def _on_secret_expired(self, event: SecretExpiredEvent) -> None:
         """Handle Secret Expired Event.
 
@@ -846,14 +868,6 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         self._send_certificate_requests()
 
     def _remove_requirer_csr_from_relation_data(self, csr: str) -> None:
-        """Remove CSR from relation data.
-
-        Args:
-            csr (str): Certificate signing request
-
-        Returns:
-            None
-        """
         relation = self.model.get_relation(self.relationship_name)
         if not relation:
             raise RuntimeError(
@@ -863,19 +877,28 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         if not self.get_requirer_csrs():
             logger.info("No CSRs in relation data - Doing nothing")
             return
-        requirer_relation_data = _load_relation_data(relation.data[self.model.unit])
+        app_or_unit = self._get_app_or_unit()
+        requirer_relation_data = _load_relation_data(relation.data[app_or_unit])
         existing_relation_data = requirer_relation_data.get("certificate_signing_requests", [])
         new_relation_data = copy.deepcopy(existing_relation_data)
         for requirer_csr in new_relation_data:
             if requirer_csr["certificate_signing_request"] == csr:
                 new_relation_data.remove(requirer_csr)
         try:
-            relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(
+            relation.data[app_or_unit]["certificate_signing_requests"] = json.dumps(
                 new_relation_data
             )
             logger.info("Removed CSR from relation data")
         except ModelError:
             logger.warning("Failed to update relation data")
+
+    def _get_app_or_unit(self) -> Union[Application, Unit]:
+        """Return the application or unit object based on the mode."""
+        if self.mode == Mode.UNIT:
+            return self.model.unit
+        elif self.mode == Mode.APP:
+            return self.model.app
+        raise RuntimeError("Invalid mode")
 
     @property
     def private_key(self) -> Optional[str]:
@@ -956,8 +979,9 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         relation = self.model.get_relation(self.relationship_name)
         if not relation:
             return []
+        app_or_unit = self._get_app_or_unit()
         requirer_csrs = []
-        requirer_relation_data = _load_relation_data(relation.data[self.model.unit])
+        requirer_relation_data = _load_relation_data(relation.data[app_or_unit])
         requirer_csrs_dict = requirer_relation_data.get("certificate_signing_requests", [])
         for requirer_csr_dict in requirer_csrs_dict:
             csr = requirer_csr_dict.get("certificate_signing_request")
@@ -968,7 +992,7 @@ class TLSCertificatesRequiresPerUnitV4(Object):
             relation_csr = RequirerCSR(
                 relation_id=relation.id,
                 application_name=self.model.app.name,
-                unit_name=self.model.unit.name,
+                unit_name=self.model.unit.name if self.mode == Mode.UNIT else None,
                 csr=csr,
                 is_ca=ca,
             )
@@ -1243,482 +1267,21 @@ class TLSCertificatesRequiresPerUnitV4(Object):
         return True
 
     def _get_private_key_secret_label(self) -> str:
-        return f"{LIBID}-private-key-{self._get_unit_number()}"
+        if self.mode == Mode.UNIT:
+            return f"{LIBID}-private-key-{self._get_unit_number()}"
+        elif self.mode == Mode.APP:
+            return f"{LIBID}-private-key"
+        else:
+            raise ValueError("Invalid mode. Must be Mode.UNIT or Mode.APP.")
 
     def _get_csr_secret_label(self, csr: str) -> str:
         csr_in_sha256_hex = get_sha256_hex(csr)
-        return f"{LIBID}-certificate-{self._get_unit_number()}-{csr_in_sha256_hex}"
+        if self.mode == Mode.UNIT:
+            return f"{LIBID}-certificate-{self._get_unit_number()}-{csr_in_sha256_hex}"
+        elif self.mode == Mode.APP:
+            return f"{LIBID}-certificate-{csr_in_sha256_hex}"
+        else:
+            raise ValueError("Invalid mode. Must be Mode.UNIT or Mode.APP.")
 
     def _get_unit_number(self) -> str:
         return self.model.unit.name.split("/")[1]
-
-
-class TLSCertificatesRequiresPerAppV4(Object):
-    """A class to manage the TLS certificates interface for an app.
-
-    Use this class if your charm's certificates are managed per app.
-    """
-
-    on = CertificatesRequirerCharmEvents()  # type: ignore[reportAssignmentType]
-
-    def __init__(
-        self,
-        charm: CharmBase,
-        relationship_name: str,
-        certificate_requests: List[CertificateRequest],
-        refresh_events: List[BoundEvent] = [],
-    ):
-        super().__init__(charm, relationship_name)
-        if not JujuVersion.from_environ().has_secrets:
-            logger.warning("This version of the TLS library requires Juju secrets (Juju >= 3.0)")
-        self.charm = charm
-        self.relationship_name = relationship_name
-        self.certificate_requests = certificate_requests
-        self.framework.observe(self.on.update_status, self._configure)
-        self.framework.observe(
-            charm.on[relationship_name].relation_created, self._configure
-        )
-        self.framework.observe(
-            charm.on[relationship_name].relation_changed, self._configure
-        )
-        self.framework.observe(charm.on.secret_expired, self._on_secret_expired)
-        for event in refresh_events:
-            self.framework.observe(event, self._configure)
-
-    def _configure(self, _: EventBase):
-        """Handle TLS Certificates Relation Data.
-
-        This method is called during any TLS relation event.
-        It will generate a private key if it doesn't exist yet.
-        It will send certificate requests if they haven't been sent yet.
-        It will find available certificates and emit events.
-        """
-        if not self._tls_relation_created():
-            logger.debug("TLS relation not created yet.")
-            return
-        self._generate_private_key()
-        self._send_certificate_requests()
-        self._find_available_certificates()
-        self._cleanup_certificate_requests()
-
-    def _on_secret_expired(self, event: SecretExpiredEvent) -> None:
-        """Handle Secret Expired Event.
-
-        Renews certificate requests and removes the expired secret.
-        """
-        if not event.secret.label or not event.secret.label.startswith(f"{LIBID}-certificate"):
-            return
-        csr = event.secret.get_content()["csr"]
-        provider_certificate = self._find_certificate_in_relation_data(csr)
-        if provider_certificate and provider_certificate.expiry_time:
-            self._renew_certificate_request(csr)
-        event.secret.remove_all_revisions()
-
-    def _renew_certificate_request(self, csr: str):
-        """Remove existing CSR from relation data and create a new one."""
-        self._remove_requirer_csr_from_relation_data(csr)
-        self._send_certificate_requests()
-
-    def _remove_requirer_csr_from_relation_data(self, csr: str) -> None:
-        """Remove CSR from relation data.
-
-        Args:
-            csr (str): Certificate signing request
-
-        Returns:
-            None
-        """
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            raise RuntimeError(
-                f"Relation {self.relationship_name} does not exist - "
-                f"The certificate request can't be completed"
-            )
-        if not self.get_requirer_csrs():
-            logger.info("No CSRs in relation data - Doing nothing")
-            return
-        requirer_relation_data = _load_relation_data(relation.data[self.model.app])
-        existing_relation_data = requirer_relation_data.get("certificate_signing_requests", [])
-        new_relation_data = copy.deepcopy(existing_relation_data)
-        for requirer_csr in new_relation_data:
-            if requirer_csr["certificate_signing_request"] == csr:
-                new_relation_data.remove(requirer_csr)
-        try:
-            relation.data[self.model.app]["certificate_signing_requests"] = json.dumps(
-                new_relation_data
-            )
-            logger.info("Removed CSR from relation data")
-        except ModelError:
-            logger.warning("Failed to update relation data")
-
-    @property
-    def private_key(self) -> Optional[str]:
-        """Return the private key."""
-        if not self._private_key_generated():
-            return None
-        secret = self.charm.model.get_secret(
-            label=self._get_private_key_secret_label()
-        )
-        private_key = secret.get_content()["private-key"]
-        return private_key
-
-    def _generate_private_key(self) -> None:
-        if self._private_key_generated():
-            return
-        private_key = generate_private_key()
-        self.charm.app.add_secret(
-            content={"private-key": private_key.decode()},
-            label=self._get_private_key_secret_label(),
-        )
-        logger.info("private key generated for app")
-
-    def _private_key_generated(self) -> bool:
-        try:
-            self.charm.model.get_secret(
-                label=self._get_private_key_secret_label()
-            )
-        except SecretNotFoundError:
-            return False
-        return True
-
-    def _csr_matches_request(self, csr: str):
-        for certificate_request in self.certificate_requests:
-            if csr_has_attributes(
-                csr=csr,
-                common_name=certificate_request.common_name,
-                sans_dns=certificate_request.sans_dns,
-                organization=certificate_request.organization,
-                email_address=certificate_request.email_address,
-                country_name=certificate_request.country_name,
-                state_or_province_name=certificate_request.state_or_province_name,
-                locality_name=certificate_request.locality_name,
-            ):
-                return True
-        return False
-
-    def _certificate_requested(self, certificate_request: CertificateRequest) -> bool:
-        if not self.private_key:
-            return False
-        csr = self._certificate_requested_for_attributes(certificate_request)
-        if not csr:
-            return False
-        if not csr_matches_private_key(csr=csr, key=self.private_key):
-            return False
-        return True
-
-    def _certificate_requested_for_attributes(
-            self,
-            certificate_request: CertificateRequest
-        ) -> Optional[str]:
-        for requirer_csr in self.get_requirer_csrs():
-            csr_str = requirer_csr.csr
-            if csr_has_attributes(
-                csr=csr_str,
-                common_name=certificate_request.common_name,
-                sans_dns=certificate_request.sans_dns,
-                organization=certificate_request.organization,
-                email_address=certificate_request.email_address,
-                country_name=certificate_request.country_name,
-                state_or_province_name=certificate_request.state_or_province_name,
-                locality_name=certificate_request.locality_name,
-            ):
-                return csr_str
-        return None
-
-    def get_requirer_csrs(self) -> List[RequirerCSR]:
-        """Return list of requirer's CSRs from relation unit data."""
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            return []
-        requirer_csrs = []
-        requirer_relation_data = _load_relation_data(relation.data[self.model.app])
-        requirer_csrs_dict = requirer_relation_data.get("certificate_signing_requests", [])
-        for requirer_csr_dict in requirer_csrs_dict:
-            csr = requirer_csr_dict.get("certificate_signing_request")
-            if not csr:
-                logger.warning("No CSR found in relation data - Skipping")
-                continue
-            ca = requirer_csr_dict.get("ca", False)
-            relation_csr = RequirerCSR(
-                relation_id=relation.id,
-                application_name=self.model.app.name,
-                unit_name=self.model.unit.name,
-                csr=csr,
-                is_ca=ca,
-            )
-            requirer_csrs.append(relation_csr)
-        return requirer_csrs
-
-    def get_provider_certificates(self) -> List[ProviderCertificate]:
-        """Return list of certificates from the provider's relation data."""
-        provider_certificates: List[ProviderCertificate] = []
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            logger.debug("No relation: %s", self.relationship_name)
-            return []
-        if not relation.app:
-            logger.debug("No remote app in relation: %s", self.relationship_name)
-            return []
-        provider_relation_data = _load_relation_data(relation.data[relation.app])
-        provider_certificate_dicts = provider_relation_data.get("certificates", [])
-        for provider_certificate_dict in provider_certificate_dicts:
-            certificate = provider_certificate_dict.get("certificate")
-            if not certificate:
-                logger.warning("No certificate found in relation data - Skipping")
-                continue
-            try:
-                certificate_object = x509.load_pem_x509_certificate(data=certificate.encode())
-            except ValueError as e:
-                logger.error("Could not load certificate - Skipping: %s", e)
-                continue
-            ca = provider_certificate_dict.get("ca")
-            chain = provider_certificate_dict.get("chain", [])
-            csr = provider_certificate_dict.get("certificate_signing_request")
-            recommended_expiry_notification_time = provider_certificate_dict.get(
-                "recommended_expiry_notification_time"
-            )
-            expiry_time = certificate_object.not_valid_after_utc
-            validity_start_time = certificate_object.not_valid_before_utc
-            expiry_notification_time = calculate_expiry_notification_time(
-                validity_start_time=validity_start_time,
-                expiry_time=expiry_time,
-                provider_recommended_notification_time=recommended_expiry_notification_time,
-            )
-            if not csr:
-                logger.warning("No CSR found in relation data - Skipping")
-                continue
-            revoked = provider_certificate_dict.get("revoked", False)
-            provider_certificate = ProviderCertificate(
-                relation_id=relation.id,
-                application_name=relation.app.name,
-                csr=csr,
-                certificate=certificate,
-                ca=ca,
-                chain=chain,
-                revoked=revoked,
-                expiry_time=expiry_time,
-                expiry_notification_time=expiry_notification_time,
-            )
-            provider_certificates.append(provider_certificate)
-        return provider_certificates
-
-    def _request_certificate(self, csr: str, is_ca: bool) -> None:
-        """Add CSR to relation data."""
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            raise RuntimeError(
-                f"Relation {self.relationship_name} does not exist - "
-                f"The certificate request can't be completed"
-            )
-
-        new_csr_dict = {
-            "certificate_signing_request": csr.strip(),
-            "ca": is_ca,
-        }
-        requirer_relation_data = _load_relation_data(relation.data[self.model.app])
-        existing_relation_data = requirer_relation_data.get("certificate_signing_requests", [])
-        new_relation_data = copy.deepcopy(existing_relation_data)
-        new_relation_data.append(new_csr_dict)
-        try:
-            relation.data[self.model.app]["certificate_signing_requests"] = json.dumps(
-                new_relation_data
-            )
-            logger.info("Certificate signing request added to relation data.")
-        except ModelError:
-            logger.warning("Failed to update relation data")
-
-    def _send_certificate_requests(self):
-        if not self.private_key:
-            logger.debug("Private key not generated yet.")
-            return
-        for certificate_request in self.certificate_requests:
-            if not self._certificate_requested(certificate_request):
-                csr = generate_csr(
-                    private_key=self.private_key.encode(),
-                    sans_dns=certificate_request.sans_dns,
-                    common_name=certificate_request.common_name,
-                    organization=certificate_request.organization,
-                    email_address=certificate_request.email_address,
-                    country_name=certificate_request.country_name,
-                    state_or_province_name=certificate_request.state_or_province_name,
-                    locality_name=certificate_request.locality_name,
-                )
-                self._request_certificate(csr=csr.decode(), is_ca=certificate_request.is_ca)
-
-    def get_assigned_certificate(
-        self,
-        certificate_request: CertificateRequest
-    ) -> Optional[ProviderCertificate]:
-        """Get the certificate that was assigned to the given certificate request."""
-        if requirer_csr := self.get_certificate_signing_request(certificate_request):
-            return self._find_certificate_in_relation_data(requirer_csr.csr)
-        return None
-
-    def get_assigned_certificates(self) -> List[ProviderCertificate]:
-        """Get a list of certificates that were assigned to this unit."""
-        assigned_certificates = []
-        for requirer_csr in self.get_certificate_signing_requests(fulfilled_only=True):
-            if cert := self._find_certificate_in_relation_data(requirer_csr.csr):
-                assigned_certificates.append(cert)
-        return assigned_certificates
-
-    def get_certificate_signing_request(
-        self,
-        certificate_request: CertificateRequest
-    ) -> Optional[RequirerCSR]:
-        """Get the CSR that was sent to the provider for the given certificate request."""
-        for requirer_csr in self.get_requirer_csrs():
-            if csr_has_attributes(
-                csr=requirer_csr.csr,
-                common_name=certificate_request.common_name,
-                sans_dns=certificate_request.sans_dns,
-                organization=certificate_request.organization,
-                email_address=certificate_request.email_address,
-                country_name=certificate_request.country_name,
-                state_or_province_name=certificate_request.state_or_province_name,
-                locality_name=certificate_request.locality_name,
-            ):
-                return requirer_csr
-        return None
-
-    def get_certificate_signing_requests(
-        self,
-        fulfilled_only: bool = False,
-        unfulfilled_only: bool = False,
-    ) -> List[RequirerCSR]:
-        """Get the list of CSR's that were sent to the provider.
-
-        You can choose to get only the CSR's that have a certificate assigned or only the CSR's
-        that don't.
-
-        Args:
-            fulfilled_only (bool): This option will discard CSRs that don't have certificates yet.
-            unfulfilled_only (bool): This option will discard CSRs that have certificates signed.
-
-        Returns:
-            List of RequirerCSR objects.
-        """
-        csrs = []
-        for requirer_csr in self.get_requirer_csrs():
-            cert = self._find_certificate_in_relation_data(requirer_csr.csr)
-            if (unfulfilled_only and cert) or (fulfilled_only and not cert):
-                continue
-            csrs.append(requirer_csr)
-        return csrs
-
-    def _find_certificate_in_relation_data(self, csr: str) -> Optional[ProviderCertificate]:
-        """Return the certificate that match the given CSR."""
-        for provider_certificate in self.get_provider_certificates():
-            if provider_certificate.csr != csr:
-                continue
-            return provider_certificate
-        return None
-
-    def _find_available_certificates(self):
-        """Find available certificates and emit events.
-
-        This method will find certificates that are available for the requirer's CSRs.
-        If a certificate is found, it will be set as a secret and an event will be emitted.
-        If a certificate is revoked, the secret will be removed and an event will be emitted.
-        """
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            logger.debug("No relation: %s", self.relationship_name)
-            return
-        if not relation.app:
-            logger.debug("No remote app in relation: %s", self.relationship_name)
-            return
-        if not _relation_data_is_valid(relation, relation.app, PROVIDER_JSON_SCHEMA):
-            logger.debug("Relation data did not pass JSON Schema validation")
-            return
-        requirer_csrs = [
-            certificate_creation_request.csr
-            for certificate_creation_request in self.get_requirer_csrs()
-        ]
-        provider_certificates = self.get_provider_certificates()
-        for certificate in provider_certificates:
-            if certificate.csr in requirer_csrs:
-                secret_label = self._get_csr_secret_label(certificate.csr)
-                if certificate.revoked:
-                    with suppress(SecretNotFoundError):
-                        logger.debug(
-                            "Removing secret with label %s",
-                            secret_label,
-                        )
-                        secret = self.model.get_secret(
-                            label=secret_label)
-                        secret.remove_all_revisions()
-                else:
-                    if not self._csr_matches_request(certificate.csr):
-                        logger.debug(
-                            "Certificate requested for different attributes - Skipping"
-                        )
-                        continue
-                    try:
-                        logger.debug("Setting secret with label %s", secret_label)
-                        secret = self.model.get_secret(label=secret_label)
-                        secret.set_content(
-                            content={
-                                "certificate": certificate.certificate,
-                                "csr": certificate.csr
-                            }
-                        )
-                        secret.set_info(
-                            expire=self._get_next_secret_expiry_time(certificate),
-                        )
-                    except SecretNotFoundError:
-                        logger.debug("Creating new secret with label %s", secret_label)
-                        secret = self.charm.app.add_secret(
-                            content={
-                                "certificate": certificate.certificate,
-                                "csr": certificate.csr
-                            },
-                            label=secret_label,
-                            expire=self._get_next_secret_expiry_time(certificate),
-                        )
-                    self.on.certificate_available.emit(
-                        certificate_signing_request=certificate.csr,
-                        certificate=certificate.certificate,
-                        ca=certificate.ca,
-                        chain=certificate.chain,
-                    )
-
-    def _cleanup_certificate_requests(self):
-        """Remove certificate requests that have been fulfilled."""
-        for requirer_csr in self.get_certificate_signing_requests():
-            if not self._csr_matches_request(requirer_csr.csr):
-                self._remove_requirer_csr_from_relation_data(requirer_csr.csr)
-
-    def _get_next_secret_expiry_time(self, certificate: ProviderCertificate) -> Optional[datetime]:
-        """Return the expiry time or expiry notification time.
-
-        Extracts the expiry time from the provided certificate, calculates the
-        expiry notification time and return the closest of the two, that is in
-        the future.
-
-        Args:
-            certificate: ProviderCertificate object
-
-        Returns:
-            Optional[datetime]: None if the certificate expiry time cannot be read,
-                                next expiry time otherwise.
-        """
-        if not certificate.expiry_time or not certificate.expiry_notification_time:
-            return None
-        return _get_closest_future_time(
-            certificate.expiry_notification_time,
-            certificate.expiry_time,
-        )
-
-    def _tls_relation_created(self) -> bool:
-        relation = self.model.get_relation(self.relationship_name)
-        if not relation:
-            return False
-        return True
-
-    def _get_private_key_secret_label(self) -> str:
-        return f"{LIBID}-private-key"
-
-    def _get_csr_secret_label(self, csr: str) -> str:
-        csr_in_sha256_hex = get_sha256_hex(csr)
-        return f"{LIBID}-certificate-{csr_in_sha256_hex}"
