@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from ipaddress import IPv4Address
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from cryptography import x509
 from cryptography.hazmat._oid import ExtensionOID
@@ -120,10 +120,13 @@ PROVIDER_JSON_SCHEMA = {
 
 logger = logging.getLogger(__name__)
 
+
 class Mode(Enum):
     """Enum representing the mode of the certificate request."""
+
     UNIT = 1
     APP = 2
+
 
 @dataclass
 class RequirerCSR:
@@ -135,9 +138,11 @@ class RequirerCSR:
     is_ca: bool
     unit_name: Optional[str] = None
 
+
 @dataclass
 class CertificateRequest:
     """This class represents a certificate request."""
+
     sans_dns: List[str]
     common_name: str
     sans_ip: Optional[List[str]] = None
@@ -148,6 +153,7 @@ class CertificateRequest:
     state_or_province_name: Optional[str] = None
     locality_name: Optional[str] = None
     is_ca: bool = False
+
 
 @dataclass
 class ProviderCertificate:
@@ -186,6 +192,27 @@ class ProviderCertificate:
                 "expiry_notification_time": self.expiry_notification_time.isoformat()
                 if self.expiry_notification_time
                 else None,
+            }
+        )
+
+
+@dataclass
+class PrivateKey:
+    """This class represents a private key."""
+
+    private_key: str
+    password: str
+
+    def to_json(self) -> str:
+        """Return the object as a JSON string.
+
+        Returns:
+            str: JSON representation of the object
+        """
+        return json.dumps(
+            {
+                "private_key": self.private_key,
+                "password": self.password,
             }
         )
 
@@ -278,7 +305,7 @@ def csr_has_attributes(  # noqa: C901
     email_address: Optional[str],
     country_name: Optional[str],
     state_or_province_name: Optional[str],
-    locality_name: Optional[str]
+    locality_name: Optional[str],
 ) -> bool:
     """Check whether CSR has the specified attributes."""
     csr_object = x509.load_pem_x509_csr(csr.encode())
@@ -296,16 +323,18 @@ def csr_has_attributes(  # noqa: C901
         return False
     if len(csr_country_name) == 0 and country_name:
         return False
-    if len(csr_country_name)!= 0 and csr_country_name[0].value != country_name:
+    if len(csr_country_name) != 0 and csr_country_name[0].value != country_name:
         return False
     if len(csr_state_or_province_name) == 0 and state_or_province_name:
         return False
-    if len(csr_state_or_province_name)!= 0 and \
-      csr_state_or_province_name[0].value != state_or_province_name:
+    if (
+        len(csr_state_or_province_name) != 0
+        and csr_state_or_province_name[0].value != state_or_province_name
+    ):
         return False
     if len(csr_locality_name) == 0 and locality_name:
         return False
-    if len(csr_locality_name)!=0 and csr_locality_name[0].value != locality_name:
+    if len(csr_locality_name) != 0 and csr_locality_name[0].value != locality_name:
         return False
     if len(csr_organization_name) == 0 and organization:
         return False
@@ -313,7 +342,7 @@ def csr_has_attributes(  # noqa: C901
         return False
     if len(csr_email_address) == 0 and email_address:
         return False
-    if len(csr_email_address)!= 0 and csr_email_address[0].value != email_address:
+    if len(csr_email_address) != 0 and csr_email_address[0].value != email_address:
         return False
     sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     if sorted([str(san.value) for san in sans]) != sorted(sans_dns):
@@ -344,8 +373,8 @@ def calculate_expiry_notification_time(
     """
     if provider_recommended_notification_time is not None:
         provider_recommended_notification_time = abs(provider_recommended_notification_time)
-        provider_recommendation_time_delta = (
-            expiry_time - timedelta(hours=provider_recommended_notification_time)
+        provider_recommendation_time_delta = expiry_time - timedelta(
+            hours=provider_recommended_notification_time
         )
         if validity_start_time < provider_recommendation_time_delta:
             return provider_recommendation_time_delta
@@ -733,6 +762,7 @@ def csr_matches_certificate(csr: str, cert: str) -> bool:
         return False
     return True
 
+
 def csr_matches_private_key(csr: str, key: str) -> bool:
     """Check if a CSR matches a private key.
 
@@ -755,6 +785,7 @@ def csr_matches_private_key(csr: str, key: str) -> bool:
         return False
     return True
 
+
 def _relation_data_is_valid(
     relation: Relation, app_or_unit: Union[Application, Unit], json_schema: dict
 ) -> bool:
@@ -776,7 +807,6 @@ def _relation_data_is_valid(
         return False
 
 
-
 class CertificatesRequirerCharmEvents(CharmEvents):
     """List of events that the TLS Certificates requirer charm can leverage."""
 
@@ -790,7 +820,6 @@ class TLSCertificatesRequiresV4(Object):
     """
 
     on = CertificatesRequirerCharmEvents()  # type: ignore[reportAssignmentType]
-
 
     def __init__(
         self,
@@ -820,12 +849,8 @@ class TLSCertificatesRequiresV4(Object):
         self.certificate_requests = certificate_requests
         self.mode = mode
         self.framework.observe(self.on.update_status, self._configure)
-        self.framework.observe(
-            charm.on[relationship_name].relation_created, self._configure
-        )
-        self.framework.observe(
-            charm.on[relationship_name].relation_changed, self._configure
-        )
+        self.framework.observe(charm.on[relationship_name].relation_created, self._configure)
+        self.framework.observe(charm.on[relationship_name].relation_changed, self._configure)
         self.framework.observe(charm.on.secret_expired, self._on_secret_expired)
         for event in refresh_events:
             self.framework.observe(event, self._configure)
@@ -901,15 +926,16 @@ class TLSCertificatesRequiresV4(Object):
         raise RuntimeError("Invalid mode")
 
     @property
-    def private_key(self) -> Optional[str]:
+    def private_key(self) -> PrivateKey | None:
         """Return the private key."""
         if not self._private_key_generated():
             return None
-        secret = self.charm.model.get_secret(
-            label=self._get_private_key_secret_label()
-        )
+        secret = self.charm.model.get_secret(label=self._get_private_key_secret_label())
         private_key = secret.get_content()["private-key"]
-        return private_key
+        return PrivateKey(
+            private_key=private_key,
+            password="",
+        )
 
     def _generate_private_key(self) -> None:
         if self._private_key_generated():
@@ -923,9 +949,7 @@ class TLSCertificatesRequiresV4(Object):
 
     def _private_key_generated(self) -> bool:
         try:
-            self.charm.model.get_secret(
-                label=self._get_private_key_secret_label()
-            )
+            self.charm.model.get_secret(label=self._get_private_key_secret_label())
         except SecretNotFoundError:
             return False
         return True
@@ -951,14 +975,13 @@ class TLSCertificatesRequiresV4(Object):
         csr = self._certificate_requested_for_attributes(certificate_request)
         if not csr:
             return False
-        if not csr_matches_private_key(csr=csr, key=self.private_key):
+        if not csr_matches_private_key(csr=csr, key=self.private_key.private_key):
             return False
         return True
 
     def _certificate_requested_for_attributes(
-            self,
-            certificate_request: CertificateRequest
-        ) -> Optional[str]:
+        self, certificate_request: CertificateRequest
+    ) -> Optional[str]:
         for requirer_csr in self.get_requirer_csrs():
             csr_str = requirer_csr.csr
             if csr_has_attributes(
@@ -1084,7 +1107,7 @@ class TLSCertificatesRequiresV4(Object):
         for certificate_request in self.certificate_requests:
             if not self._certificate_requested(certificate_request):
                 csr = generate_csr(
-                    private_key=self.private_key.encode(),
+                    private_key=self.private_key.private_key.encode(),
                     sans_dns=certificate_request.sans_dns,
                     common_name=certificate_request.common_name,
                     organization=certificate_request.organization,
@@ -1096,25 +1119,23 @@ class TLSCertificatesRequiresV4(Object):
                 self._request_certificate(csr=csr.decode(), is_ca=certificate_request.is_ca)
 
     def get_assigned_certificate(
-        self,
-        certificate_request: CertificateRequest
-    ) -> Optional[ProviderCertificate]:
+        self, certificate_request: CertificateRequest
+    ) -> Tuple[ProviderCertificate | None, PrivateKey | None]:
         """Get the certificate that was assigned to the given certificate request."""
         if requirer_csr := self.get_certificate_signing_request(certificate_request):
-            return self._find_certificate_in_relation_data(requirer_csr.csr)
-        return None
+            return self._find_certificate_in_relation_data(requirer_csr.csr), self.private_key
+        return None, None
 
-    def get_assigned_certificates(self) -> List[ProviderCertificate]:
+    def get_assigned_certificates(self) -> Tuple[List[ProviderCertificate], PrivateKey | None]:
         """Get a list of certificates that were assigned to this unit."""
         assigned_certificates = []
         for requirer_csr in self.get_certificate_signing_requests(fulfilled_only=True):
             if cert := self._find_certificate_in_relation_data(requirer_csr.csr):
                 assigned_certificates.append(cert)
-        return assigned_certificates
+        return assigned_certificates, self.private_key
 
     def get_certificate_signing_request(
-        self,
-        certificate_request: CertificateRequest
+        self, certificate_request: CertificateRequest
     ) -> Optional[RequirerCSR]:
         """Get the CSR that was sent to the provider for the given certificate request."""
         for requirer_csr in self.get_requirer_csrs():
@@ -1195,14 +1216,11 @@ class TLSCertificatesRequiresV4(Object):
                             "Removing secret with label %s",
                             secret_label,
                         )
-                        secret = self.model.get_secret(
-                            label=secret_label)
+                        secret = self.model.get_secret(label=secret_label)
                         secret.remove_all_revisions()
                 else:
                     if not self._csr_matches_request(certificate.csr):
-                        logger.debug(
-                            "Certificate requested for different attributes - Skipping"
-                        )
+                        logger.debug("Certificate requested for different attributes - Skipping")
                         continue
                     try:
                         logger.debug("Setting secret with label %s", secret_label)
@@ -1210,7 +1228,7 @@ class TLSCertificatesRequiresV4(Object):
                         secret.set_content(
                             content={
                                 "certificate": certificate.certificate,
-                                "csr": certificate.csr
+                                "csr": certificate.csr,
                             }
                         )
                         secret.set_info(
@@ -1221,7 +1239,7 @@ class TLSCertificatesRequiresV4(Object):
                         secret = self.charm.unit.add_secret(
                             content={
                                 "certificate": certificate.certificate,
-                                "csr": certificate.csr
+                                "csr": certificate.csr,
                             },
                             label=secret_label,
                             expire=self._get_next_secret_expiry_time(certificate),

@@ -19,6 +19,7 @@ from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBa
 
 logger = logging.getLogger(__name__)
 
+
 class TLSRequirerCharm(CharmBase):
     """TLS Requirer Charm."""
 
@@ -26,34 +27,32 @@ class TLSRequirerCharm(CharmBase):
         """Handle events for certificate management."""
         super().__init__(*args)
         self._certificate_request = CertificateRequest(
-                common_name=self._get_common_name(),
-                sans_dns=self._get_config_sans_dns(),
-                organization=self._get_config_organization_name(),
-                email_address=self._get_config_email_address(),
-                country_name=self._get_config_country_name(),
-                state_or_province_name=self._get_config_state_or_province_name(),
-                locality_name=self._get_config_locality_name(),
-            )
+            common_name=self._get_common_name(),
+            sans_dns=self._get_config_sans_dns(),
+            organization=self._get_config_organization_name(),
+            email_address=self._get_config_email_address(),
+            country_name=self._get_config_country_name(),
+            state_or_province_name=self._get_config_state_or_province_name(),
+            locality_name=self._get_config_locality_name(),
+        )
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
             relationship_name="certificates",
             mode=Mode.APP if self._mode == "app" else Mode.UNIT,
-            certificate_requests = [self._certificate_request],
+            certificate_requests=[self._certificate_request],
             refresh_events=[self.on.config_changed],
         )
-        self.framework.observe(
-            self.certificates.on.certificate_available, self._configure
-        )
+        self.framework.observe(self.certificates.on.certificate_available, self._configure)
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
         self.framework.observe(self.on.install, self._configure)
         self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(self.on.config_changed, self._configure)
         self.framework.observe(self.on.certificates_relation_joined, self._configure)
         self.framework.observe(
-            self.on.certificates_relation_broken, self._on_certificates_relation_broken,
+            self.on.certificates_relation_broken,
+            self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
-
 
     @property
     def _certificates_relation_created(self) -> bool:
@@ -170,7 +169,7 @@ class TLSRequirerCharm(CharmBase):
             label=self._get_unit_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate = self.certificates.get_assigned_certificate(
+        assigned_certificate, _ = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
@@ -187,7 +186,7 @@ class TLSRequirerCharm(CharmBase):
             label=self._get_app_certificate_secret_label()
         )
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate = self.certificates.get_assigned_certificate(
+        assigned_certificate, _ = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
@@ -196,13 +195,17 @@ class TLSRequirerCharm(CharmBase):
 
     def _store_unit_certificate(self) -> None:
         """Store the assigned unit certificate in a Juju secret."""
-        assigned_certificate = self.certificates.get_assigned_certificate(
+        assigned_certificate, private_key = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
             logger.info("No unit certificate is assigned")
             return
+        if not private_key:
+            logger.error("No private key is assigned")
+            return
         certificate_secret_content = {
+            "private-key": private_key.private_key,
             "certificate": assigned_certificate.certificate,
             "ca-certificate": assigned_certificate.ca,
             "csr": assigned_certificate.csr,
@@ -225,13 +228,17 @@ class TLSRequirerCharm(CharmBase):
         """Store the assigned app certificate in a Juju secret."""
         if not self.unit.is_leader():
             return
-        assigned_certificate = self.certificates.get_assigned_certificate(
+        assigned_certificate, private_key = self.certificates.get_assigned_certificate(
             self._certificate_request
         )
         if not assigned_certificate:
             logger.info("No app certificate is assigned")
             return
+        if not private_key:
+            logger.error("No private key is assigned")
+            return
         certificate_secret_content = {
+            "private-key": private_key.private_key,
             "certificate": assigned_certificate.certificate,
             "ca-certificate": assigned_certificate.ca,
             "csr": assigned_certificate.csr,

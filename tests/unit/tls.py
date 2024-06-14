@@ -19,9 +19,10 @@ def generate_private_key(password: bytes) -> bytes:
     key_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.BestAvailableEncryption(password)
+        encryption_algorithm=serialization.BestAvailableEncryption(password),
     )
     return key_bytes
+
 
 def generate_csr(
     private_key: bytes,
@@ -30,7 +31,7 @@ def generate_csr(
     organization_name: str,
     email_address: str,
     country_name: str,
-    state_or_province_name:str,
+    state_or_province_name: str,
     locality_name: str,
     sans_dns: List[str],
 ) -> bytes:
