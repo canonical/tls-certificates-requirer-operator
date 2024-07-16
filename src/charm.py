@@ -32,7 +32,7 @@ def csr_has_attributes(  # noqa: C901
     email_address: Optional[str],
     country_name: Optional[str],
     state_or_province_name: Optional[str],
-    locality_name: Optional[str]
+    locality_name: Optional[str],
 ) -> bool:
     """Check whether CSR has the specified attributes."""
     csr_object = x509.load_pem_x509_csr(csr.encode())
@@ -50,16 +50,18 @@ def csr_has_attributes(  # noqa: C901
         return False
     if len(csr_country_name) == 0 and country_name:
         return False
-    if len(csr_country_name)!= 0 and csr_country_name[0].value != country_name:
+    if len(csr_country_name) != 0 and csr_country_name[0].value != country_name:
         return False
     if len(csr_state_or_province_name) == 0 and state_or_province_name:
         return False
-    if len(csr_state_or_province_name)!= 0 and \
-      csr_state_or_province_name[0].value != state_or_province_name:
+    if (
+        len(csr_state_or_province_name) != 0
+        and csr_state_or_province_name[0].value != state_or_province_name
+    ):
         return False
     if len(csr_locality_name) == 0 and locality_name:
         return False
-    if len(csr_locality_name)!=0 and csr_locality_name[0].value != locality_name:
+    if len(csr_locality_name) != 0 and csr_locality_name[0].value != locality_name:
         return False
     if len(csr_organization_name) == 0 and organization:
         return False
@@ -67,7 +69,7 @@ def csr_has_attributes(  # noqa: C901
         return False
     if len(csr_email_address) == 0 and email_address:
         return False
-    if len(csr_email_address)!= 0 and csr_email_address[0].value != email_address:
+    if len(csr_email_address) != 0 and csr_email_address[0].value != email_address:
         return False
     sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     if sorted([str(san.value) for san in sans]) != sorted(sans_dns):
@@ -86,17 +88,13 @@ class TLSRequirerCharm(CharmBase):
         self.framework.observe(self.on.install, self._configure)
         self.framework.observe(self.on.update_status, self._configure)
         self.framework.observe(self.on.config_changed, self._configure)
-        self.framework.observe(
-            self.on.certificates_relation_joined, self._configure
-        )
+        self.framework.observe(self.on.certificates_relation_joined, self._configure)
         self.framework.observe(
             self.on.certificates_relation_broken,
             self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
-        self.framework.observe(
-            self.certificates.on.certificate_available, self._configure
-        )
+        self.framework.observe(self.certificates.on.certificate_available, self._configure)
 
     @property
     def _certificates_relation_created(self) -> bool:
@@ -494,15 +492,15 @@ class TLSRequirerCharm(CharmBase):
         logger.info("App certificate request sent")
 
     def _generate_unit_csr(
-            self,
-            common_name: str,
-            sans_dns: List[str],
-            organization: Optional[str],
-            email_address: Optional[str],
-            country_name: Optional[str],
-            state_or_province_name: Optional[str],
-            locality_name: Optional[str],
-        ) -> None:
+        self,
+        common_name: str,
+        sans_dns: List[str],
+        organization: Optional[str],
+        email_address: Optional[str],
+        country_name: Optional[str],
+        state_or_province_name: Optional[str],
+        locality_name: Optional[str],
+    ) -> None:
         """Generate unit CSR based on private key and stores it in Juju secret."""
         if not self._unit_private_key_is_stored:
             raise RuntimeError("Private key not stored.")
@@ -532,15 +530,15 @@ class TLSRequirerCharm(CharmBase):
         logger.info("Unit CSR secret updated")
 
     def _generate_app_csr(
-            self,
-            common_name: str,
-            sans_dns: List[str],
-            organization: Optional[str],
-            email_address: Optional[str],
-            country_name: Optional[str],
-            state_or_province_name: Optional[str],
-            locality_name: Optional[str],
-        ) -> None:
+        self,
+        common_name: str,
+        sans_dns: List[str],
+        organization: Optional[str],
+        email_address: Optional[str],
+        country_name: Optional[str],
+        state_or_province_name: Optional[str],
+        locality_name: Optional[str],
+    ) -> None:
         """Generate app CSR based on private key and stores it in Juju secret."""
         if not self._app_private_key_is_stored:
             raise RuntimeError("Private key not stored.")

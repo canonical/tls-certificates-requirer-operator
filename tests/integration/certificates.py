@@ -10,6 +10,7 @@ from cryptography import x509
 
 logger = logging.getLogger(__name__)
 
+
 class Certificate:
     def __init__(self, certificate_str: str):
         """Initialize the Certificate class.
@@ -37,9 +38,9 @@ class Certificate:
     @property
     def organization_name(self) -> Optional[str]:
         try:
-            org = self.certificate.subject.get_attributes_for_oid(
-                x509.NameOID.ORGANIZATION_NAME
-            )[0].value
+            org = self.certificate.subject.get_attributes_for_oid(x509.NameOID.ORGANIZATION_NAME)[
+                0
+            ].value
         except IndexError:
             return None
         return str(org)
@@ -47,9 +48,9 @@ class Certificate:
     @property
     def email_address(self) -> Optional[str]:
         try:
-            email = self.certificate.subject.get_attributes_for_oid(
-                x509.NameOID.EMAIL_ADDRESS
-            )[0].value
+            email = self.certificate.subject.get_attributes_for_oid(x509.NameOID.EMAIL_ADDRESS)[
+                0
+            ].value
         except IndexError:
             return None
         return str(email)
@@ -57,9 +58,9 @@ class Certificate:
     @property
     def country_name(self) -> Optional[str]:
         try:
-            country = self.certificate.subject.get_attributes_for_oid(
-                x509.NameOID.COUNTRY_NAME
-            )[0].value
+            country = self.certificate.subject.get_attributes_for_oid(x509.NameOID.COUNTRY_NAME)[
+                0
+            ].value
         except IndexError:
             return None
         return str(country)
@@ -77,9 +78,9 @@ class Certificate:
     @property
     def locality_name(self) -> Optional[str]:
         try:
-            locality = self.certificate.subject.get_attributes_for_oid(
-                x509.NameOID.LOCALITY_NAME
-            )[0].value
+            locality = self.certificate.subject.get_attributes_for_oid(x509.NameOID.LOCALITY_NAME)[
+                0
+            ].value
         except IndexError:
             return None
         return str(locality)
@@ -98,30 +99,30 @@ class Certificate:
             logger.info(
                 "Organization name does not match: %s != %s",
                 self.organization_name,
-                organization_name
+                organization_name,
             )
             return False
         if self.country_name != country_name:
-            logger.info("Country name does not match: %s != %s", self.country_name,  country_name)
+            logger.info("Country name does not match: %s != %s", self.country_name, country_name)
             return False
         if self.state_or_province_name != state_or_province_name:
             logger.info(
                 "State or province name does not match: %s != %s",
                 self.state_or_province_name,
-                state_or_province_name
+                state_or_province_name,
             )
             return False
         if self.locality_name != locality_name:
             logger.info(
-                "Locality name does not match: %s != %s", self.locality_name,  locality_name
+                "Locality name does not match: %s != %s", self.locality_name, locality_name
             )
             return False
         if self.email_address != email_address:
             logger.info(
-                "Email address does not match: %s != %s", self.email_address,  email_address
+                "Email address does not match: %s != %s", self.email_address, email_address
             )
             return False
         if sorted(self.sans_dns) != sorted(sans_dns):
-            logger.info("SANs do not match: %s != %s", self.sans_dns,  sans_dns)
+            logger.info("SANs do not match: %s != %s", self.sans_dns, sans_dns)
             return False
         return True
