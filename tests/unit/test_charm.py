@@ -29,9 +29,7 @@ CERTIFICATE = "whatever certificate"
 
 class TestCharmUnitMode(unittest.TestCase):
     def setUp(self):
-        self.private_key = generate_private_key(
-            password=PRIVATE_KEY_PASSWORD.encode()
-        )
+        self.private_key = generate_private_key(password=PRIVATE_KEY_PASSWORD.encode())
         self.csr = generate_csr(
             sans_dns=[COMMON_NAME],
             common_name=COMMON_NAME,
@@ -126,9 +124,7 @@ class TestCharmUnitMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
     @patch("charm.generate_csr")
     @patch(
@@ -162,9 +158,7 @@ class TestCharmUnitMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
     @patch("charm.generate_csr")
     @patch(
@@ -198,11 +192,10 @@ class TestCharmUnitMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
@@ -249,7 +242,8 @@ class TestCharmUnitMode(unittest.TestCase):
             ActiveStatus("Unit certificate request is sent"),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
@@ -288,7 +282,6 @@ class TestCharmUnitMode(unittest.TestCase):
             }
         )
 
-
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name="certificates-provider/0"
         )
@@ -302,9 +295,11 @@ class TestCharmUnitMode(unittest.TestCase):
             self.csr.decode(),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
         self,
@@ -357,7 +352,6 @@ class TestCharmUnitMode(unittest.TestCase):
                 "country_name": COUNTRY_NAME,
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
-
             }
         )
 
@@ -372,11 +366,11 @@ class TestCharmUnitMode(unittest.TestCase):
             ActiveStatus("Unit certificate is available"),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
-        self,
-        patch_get_assigned_certificates
+        self, patch_get_assigned_certificates
     ):
         self._add_model_secret(
             owner=self.harness.model.unit.name,
@@ -402,7 +396,6 @@ class TestCharmUnitMode(unittest.TestCase):
                 "country_name": COUNTRY_NAME,
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
-
             }
         )
         relation_id = self.harness.add_relation(
@@ -438,7 +431,8 @@ class TestCharmUnitMode(unittest.TestCase):
 
         event.fail.assert_called()
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
@@ -551,15 +545,12 @@ class TestCharmUnitMode(unittest.TestCase):
         self.assertEqual(secret_content["csr"], self.csr.decode())
         patch_generate_csr.assert_not_called()
 
-
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
     )
     @patch("charm.generate_csr")
     def test_given_csr_stored_when_config_changed_then_new_certificate_is_requested(
-        self,
-        patch_generate_csr,
-        patch_request_certificate_creation
+        self, patch_generate_csr, patch_request_certificate_creation
     ):
         self._add_model_secret(
             owner=self.harness.model.unit.name,
@@ -638,11 +629,10 @@ class TestCharmUnitMode(unittest.TestCase):
         csr_secret = self.harness.model.get_secret(label="csr-0").get_content(refresh=True)
         self.assertEqual(csr_secret["csr"], new_csr.decode())
 
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=new_csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=new_csr)
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505)
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505)
     )
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
@@ -689,9 +679,7 @@ class TestCharmUnitMode(unittest.TestCase):
 
 class TestCharmAppMode(unittest.TestCase):
     def setUp(self):
-        self.private_key = generate_private_key(
-            password=PRIVATE_KEY_PASSWORD.encode()
-        )
+        self.private_key = generate_private_key(password=PRIVATE_KEY_PASSWORD.encode())
         self.csr = generate_csr(
             sans_dns=[COMMON_NAME],
             common_name=COMMON_NAME,
@@ -757,7 +745,6 @@ class TestCharmAppMode(unittest.TestCase):
         self.assertEqual(secret_content["private-key"], self.private_key.decode())
         self.assertEqual(secret_content["private-key-password"], PRIVATE_KEY_PASSWORD)
 
-
     @patch("charm.generate_csr")
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
@@ -787,10 +774,7 @@ class TestCharmAppMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
-
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
     @patch("charm.generate_csr")
     @patch(
@@ -824,9 +808,7 @@ class TestCharmAppMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
     @patch("charm.generate_csr")
     @patch(
@@ -860,11 +842,10 @@ class TestCharmAppMode(unittest.TestCase):
             state_or_province_name=None,
             locality_name=None,
         )
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=self.csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=self.csr)
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
@@ -911,7 +892,8 @@ class TestCharmAppMode(unittest.TestCase):
             ActiveStatus("App certificate request is sent"),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
@@ -964,9 +946,11 @@ class TestCharmAppMode(unittest.TestCase):
             self.csr.decode(),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
         self,
@@ -1012,7 +996,6 @@ class TestCharmAppMode(unittest.TestCase):
                 "country_name": COUNTRY_NAME,
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
-
             }
         )
 
@@ -1027,11 +1010,11 @@ class TestCharmAppMode(unittest.TestCase):
             ActiveStatus("App certificate is available"),
         )
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
-        self,
-        patch_get_assigned_certificates
+        self, patch_get_assigned_certificates
     ):
         self._add_model_secret(
             owner=self.harness.model.app.name,
@@ -1057,7 +1040,6 @@ class TestCharmAppMode(unittest.TestCase):
                 "country_name": COUNTRY_NAME,
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
-
             }
         )
         relation_id = self.harness.add_relation(
@@ -1093,7 +1075,8 @@ class TestCharmAppMode(unittest.TestCase):
 
         event.fail.assert_called()
 
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_assigned_certificates"  # noqa: E501, W505
     )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
@@ -1202,9 +1185,7 @@ class TestCharmAppMode(unittest.TestCase):
     )
     @patch("charm.generate_csr")
     def test_given_csr_stored_when_config_changed_then_new_certificate_is_requested(
-        self,
-        patch_generate_csr,
-        patch_request_certificate_creation
+        self, patch_generate_csr, patch_request_certificate_creation
     ):
         self._add_model_secret(
             owner=self.harness.model.app.name,
@@ -1283,12 +1264,10 @@ class TestCharmAppMode(unittest.TestCase):
         csr_secret = self.harness.model.get_secret(label="csr").get_content(refresh=True)
         self.assertEqual(csr_secret["csr"], new_csr.decode())
 
-        patch_request_certificate_creation.assert_called_with(
-            certificate_signing_request=new_csr
-        )
+        patch_request_certificate_creation.assert_called_with(certificate_signing_request=new_csr)
 
-
-    @patch("charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
+    @patch(
+        "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.get_certificate_signing_requests"  # noqa: E501, W505
     )
     @patch(
         "charms.tls_certificates_interface.v3.tls_certificates.TLSCertificatesRequiresV3.request_certificate_creation"  # noqa: E501, W505
