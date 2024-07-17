@@ -22,7 +22,6 @@ NUM_UNITS = 3
 
 ARCH = "arm64" if platform.machine() == "aarch64" else "amd64"
 
-
 async def wait_for_certificate_available(
     ops_test: OpsTest,
     unit_name: str,
@@ -81,7 +80,6 @@ async def get_leader_unit(model, application_name: str) -> Unit:
 
 
 class TestTLSRequirerUnitMode:
-
     APP_NAME = "tls-requirer-unit"
     SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates-unit"
 
@@ -120,7 +118,8 @@ class TestTLSRequirerUnitMode:
             ops_test.model.remove_application(
                 app_name=app_name,
                 destroy_storage=True,
-            ) for app_name in deployed_apps
+            )
+            for app_name in deployed_apps
         ]
         await asyncio.gather(*remove_coroutines)
 
@@ -150,7 +149,7 @@ class TestTLSRequirerUnitMode:
         )
         await ops_test.model.integrate(
             relation1=f"{self.SELF_SIGNED_CERTIFICATES_APP_NAME}:certificates",
-            relation2=f"{self.APP_NAME}"
+            relation2=f"{self.APP_NAME}",
         )
         await ops_test.model.wait_for_idle(
             apps=[self.APP_NAME],
@@ -175,9 +174,8 @@ class TestTLSRequirerUnitMode:
                 sans_dns=["example.com", "example.org"],
             )
 
-
     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
-            self, ops_test, deploy
+        self, ops_test, deploy
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
@@ -212,7 +210,6 @@ class TestTLSRequirerUnitMode:
 
 
 class TestTLSRequirerAppMode:
-
     APP_NAME = "tls-requirer-app"
     SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates-app"
 
@@ -251,10 +248,10 @@ class TestTLSRequirerAppMode:
                 app_name=app_name,
                 destroy_storage=True,
                 block_until_done=True,
-            ) for app_name in deployed_apps
+            )
+            for app_name in deployed_apps
         ]
         await asyncio.gather(*remove_coroutines)
-
 
     @pytest.mark.abort_on_fail
     async def test_given_charm_is_built_when_deployed_then_status_is_active(
@@ -282,7 +279,7 @@ class TestTLSRequirerAppMode:
         )
         await ops_test.model.integrate(
             relation1=f"{self.SELF_SIGNED_CERTIFICATES_APP_NAME}:certificates",
-            relation2=f"{self.APP_NAME}"
+            relation2=f"{self.APP_NAME}",
         )
         await ops_test.model.wait_for_idle(
             apps=[self.APP_NAME],
@@ -308,7 +305,7 @@ class TestTLSRequirerAppMode:
         )
 
     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
-            self, ops_test, deploy
+        self, ops_test, deploy
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
