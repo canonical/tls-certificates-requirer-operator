@@ -103,7 +103,7 @@ class TestTLSRequirerUnitMode:
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="stable",
+            channel="edge",
         )
         await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})
         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
@@ -203,128 +203,129 @@ class TestTLSRequirerUnitMode:
         )
 
 
-class TestTLSRequirerAppMode:
-    APP_NAME = "tls-requirer-app"
-    SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates-app"
+# TODO: Uncomment this section once the new tls lib v4 is used inside of self-signed certificates
+# class TestTLSRequirerAppMode:
+#     APP_NAME = "tls-requirer-app"
+#     SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates-app"
 
-    @pytest.fixture(scope="module")
-    async def deploy(self, ops_test: OpsTest, request):
-        """Deploy charm under test."""
-        assert ops_test.model
-        charm = Path(request.config.getoption("--charm_path")).resolve()
-        await ops_test.model.deploy(
-            charm,
-            config={
-                "mode": "app",
-                "sans_dns": "example.com,example.org",
-                "organization_name": "Canonical",
-                "country_name": "GB",
-                "state_or_province_name": "London",
-                "locality_name": "London",
-            },
-            application_name=self.APP_NAME,
-            series="jammy",
-            num_units=NUM_UNITS,
-        )
-        await ops_test.model.deploy(
-            SELF_SIGNED_CERTIFICATES_CHARM_NAME,
-            application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="stable",
-        )
-        deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
-        yield
-        remove_coroutines = [
-            ops_test.model.remove_application(
-                app_name=app_name,
-                destroy_storage=True,
-                block_until_done=True,
-            )
-            for app_name in deployed_apps
-        ]
-        await asyncio.gather(*remove_coroutines)
+#     @pytest.fixture(scope="module")
+#     async def deploy(self, ops_test: OpsTest, request):
+#         """Deploy charm under test."""
+#         assert ops_test.model
+#         charm = Path(request.config.getoption("--charm_path")).resolve()
+#         await ops_test.model.deploy(
+#             charm,
+#             config={
+#                 "mode": "app",
+#                 "sans_dns": "example.com,example.org",
+#                 "organization_name": "Canonical",
+#                 "country_name": "GB",
+#                 "state_or_province_name": "London",
+#                 "locality_name": "London",
+#             },
+#             application_name=self.APP_NAME,
+#             series="jammy",
+#             num_units=NUM_UNITS,
+#         )
+#         await ops_test.model.deploy(
+#             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
+#             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
+#             channel="edge",
+#         )
+#         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
+#         yield
+#         remove_coroutines = [
+#             ops_test.model.remove_application(
+#                 app_name=app_name,
+#                 destroy_storage=True,
+#                 block_until_done=True,
+#             )
+#             for app_name in deployed_apps
+#         ]
+#         await asyncio.gather(*remove_coroutines)
 
-    @pytest.mark.abort_on_fail
-    async def test_given_charm_is_built_when_deployed_then_status_is_active(
-        self,
-        ops_test: OpsTest,
-        deploy,
-    ):
-        assert ops_test.model
-        await ops_test.model.wait_for_idle(
-            apps=[self.APP_NAME],
-            status="active",
-            timeout=1000,
-        )
+#     @pytest.mark.abort_on_fail
+#     async def test_given_charm_is_built_when_deployed_then_status_is_active(
+#         self,
+#         ops_test: OpsTest,
+#         deploy,
+#     ):
+#         assert ops_test.model
+#         await ops_test.model.wait_for_idle(
+#             apps=[self.APP_NAME],
+#             status="active",
+#             timeout=1000,
+#         )
 
-    async def test_given_self_signed_certificates_is_deployed_when_integrate_then_status_is_active(  # noqa: E501
-        self,
-        ops_test: OpsTest,
-        deploy,
-    ):
-        assert ops_test.model
-        await ops_test.model.wait_for_idle(
-            apps=[self.SELF_SIGNED_CERTIFICATES_APP_NAME],
-            status="active",
-            timeout=1000,
-        )
-        await ops_test.model.integrate(
-            relation1=f"{self.SELF_SIGNED_CERTIFICATES_APP_NAME}:certificates",
-            relation2=f"{self.APP_NAME}",
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[self.APP_NAME],
-            status="active",
-            timeout=1000,
-        )
+#     async def test_given_self_signed_certificates_is_deployed_when_integrate_then_status_is_active(  # noqa: E501
+#         self,
+#         ops_test: OpsTest,
+#         deploy,
+#     ):
+#         assert ops_test.model
+#         await ops_test.model.wait_for_idle(
+#             apps=[self.SELF_SIGNED_CERTIFICATES_APP_NAME],
+#             status="active",
+#             timeout=1000,
+#         )
+#         await ops_test.model.integrate(
+#             relation1=f"{self.SELF_SIGNED_CERTIFICATES_APP_NAME}:certificates",
+#             relation2=f"{self.APP_NAME}",
+#         )
+#         await ops_test.model.wait_for_idle(
+#             apps=[self.APP_NAME],
+#             status="active",
+#             timeout=1000,
+#         )
 
-    async def test_given_self_signed_certificates_is_related_when_get_certificate_action_then_certificate_is_returned(  # noqa: E501
-        self,
-        ops_test,
-        deploy,
-    ):
-        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
-        await wait_for_certificate_available(
-            ops_test=ops_test,
-            unit_name=leader_unit.name,
-            email_address=None,
-            organization_name="Canonical",
-            country_name="GB",
-            state_or_province_name="London",
-            locality_name="London",
-            sans_dns=["example.com", "example.org"],
-        )
+#     async def test_given_self_signed_certificates_is_related_when_get_certificate_action_then_certificate_is_returned(  # noqa: E501
+#         self,
+#         ops_test,
+#         deploy,
+#     ):
+#         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
+#         await wait_for_certificate_available(
+#             ops_test=ops_test,
+#             unit_name=leader_unit.name,
+#             email_address=None,
+#             organization_name="Canonical",
+#             country_name="GB",
+#             state_or_province_name="London",
+#             locality_name="London",
+#             sans_dns=["example.com", "example.org"],
+#         )
 
-    async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
-        self, ops_test, deploy
-    ):
-        assert ops_test.model
-        await ops_test.model.wait_for_idle(
-            apps=[self.APP_NAME],
-            status="active",
-            timeout=1000,
-        )
+#     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
+#         self, ops_test, deploy
+#     ):
+#         assert ops_test.model
+#         await ops_test.model.wait_for_idle(
+#             apps=[self.APP_NAME],
+#             status="active",
+#             timeout=1000,
+#         )
 
-        tls_requirer_app = ops_test.model.applications[self.APP_NAME]
+#         tls_requirer_app = ops_test.model.applications[self.APP_NAME]
 
-        await tls_requirer_app.set_config(
-            {
-                "organization_name": "Ubuntu",
-                "email_address": "ubuntu@pizza.com",
-                "country_name": "CA",
-                "state_or_province_name": "Quebec",
-                "locality_name": "Montreal",
-            }
-        )
+#         await tls_requirer_app.set_config(
+#             {
+#                 "organization_name": "Ubuntu",
+#                 "email_address": "ubuntu@pizza.com",
+#                 "country_name": "CA",
+#                 "state_or_province_name": "Quebec",
+#                 "locality_name": "Montreal",
+#             }
+#         )
 
-        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
+#         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
 
-        await wait_for_certificate_available(
-            ops_test=ops_test,
-            unit_name=leader_unit.name,
-            email_address="ubuntu@pizza.com",
-            organization_name="Ubuntu",
-            country_name="CA",
-            state_or_province_name="Quebec",
-            locality_name="Montreal",
-            sans_dns=["example.com", "example.org"],
-        )
+#         await wait_for_certificate_available(
+#             ops_test=ops_test,
+#             unit_name=leader_unit.name,
+#             email_address="ubuntu@pizza.com",
+#             organization_name="Ubuntu",
+#             country_name="CA",
+#             state_or_province_name="Quebec",
+#             locality_name="Montreal",
+#             sans_dns=["example.com", "example.org"],
+#         )
