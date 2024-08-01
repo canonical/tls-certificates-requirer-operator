@@ -132,16 +132,24 @@ class TLSRequirerCharm(CharmBase):
             event: Juju event.
         """
         if self._unit_certificate_secret_exists:
-            certificate_secret = self.model.get_secret(
-                label=self._get_unit_certificate_secret_label()
-            )
+            try:
+                certificate_secret = self.model.get_secret(
+                    label=self._get_unit_certificate_secret_label()
+                )
+            except SecretNotFoundError:
+                logger.warning("Unable to retrieve unit certificate secret")
+                return
             certificate_secret.remove_all_revisions()
         if self._app_certificate_secret_exists:
             if not self.unit.is_leader():
                 return
-            certificate_secret = self.model.get_secret(
-                label=self._get_app_certificate_secret_label()
-            )
+            try:
+                certificate_secret = self.model.get_secret(
+                    label=self._get_app_certificate_secret_label()
+                )
+            except SecretNotFoundError:
+                logger.warning("Unable to retrieve app certificate secret")
+                return
             certificate_secret.remove_all_revisions()
 
     def _get_certificate_requests(self) -> List[CertificateRequest]:
@@ -161,9 +169,13 @@ class TLSRequirerCharm(CharmBase):
         """Return whether unit certificate is available in Juju secret."""
         if not self._unit_certificate_secret_exists:
             return False
-        stored_certificate_secret = self.model.get_secret(
-            label=self._get_unit_certificate_secret_label()
-        )
+        try:
+            stored_certificate_secret = self.model.get_secret(
+                label=self._get_unit_certificate_secret_label()
+            )
+        except SecretNotFoundError:
+            logger.warning("Unable to retrieve unit certificate secret")
+            return False
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
             certificate_request=self._get_certificate_requests()[0]
@@ -178,9 +190,13 @@ class TLSRequirerCharm(CharmBase):
             return False
         if not self._app_certificate_secret_exists:
             return False
-        stored_certificate_secret = self.model.get_secret(
-            label=self._get_app_certificate_secret_label()
-        )
+        try:
+            stored_certificate_secret = self.model.get_secret(
+                label=self._get_app_certificate_secret_label()
+            )
+        except SecretNotFoundError:
+            logger.warning("Unable to retrieve app certificate secret")
+            return False
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
             certificate_request=self._get_certificate_requests()[0]
