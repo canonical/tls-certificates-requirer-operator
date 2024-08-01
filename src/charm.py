@@ -46,6 +46,9 @@ class TLSRequirerCharm(CharmBase):
             relationship_name="certificates",
             certificate_requests=self._get_certificate_requests(),
             mode=mode,
+            refresh_events=[
+                self.on.config_changed,
+            ],
         )
 
     @property
