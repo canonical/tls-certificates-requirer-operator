@@ -134,6 +134,7 @@ class TestCharmUnitMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -177,6 +178,7 @@ class TestCharmUnitMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -274,6 +276,7 @@ class TestCharmUnitMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(new_certificate),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -327,6 +330,7 @@ class TestCharmUnitMode(unittest.TestCase):
 
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=0,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -459,6 +463,7 @@ class TestCharmAppMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -505,6 +510,7 @@ class TestCharmAppMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -597,6 +603,7 @@ class TestCharmAppMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=relation_id,
                 certificate=Certificate.from_string(new_certificate),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],
@@ -646,6 +653,7 @@ class TestCharmAppMode(unittest.TestCase):
         )
         patch_get_assigned_certificate.return_value = (
             ProviderCertificate(
+                relation_id=0,
                 certificate=Certificate.from_string(CERTIFICATE),
                 ca=Certificate.from_string(CA),
                 chain=[Certificate.from_string(CA)],

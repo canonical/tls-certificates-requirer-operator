@@ -5,7 +5,7 @@
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
 import logging
-from typing import List, Optional, cast
+from typing import List, Optional, Tuple, cast
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
@@ -26,12 +26,6 @@ class TLSRequirerCharm(CharmBase):
     def __init__(self, *args):
         """Handle events for certificate management."""
         super().__init__(*args)
-        self.certificates = TLSCertificatesRequiresV4(
-            charm=self,
-            relationship_name="certificates",
-            certificate_requests=self._get_certificate_requests(),
-            mode=self._get_config_mode(),
-        )
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)
         self.framework.observe(self.on.install, self._configure)
         self.framework.observe(self.on.update_status, self._configure)
@@ -43,6 +37,16 @@ class TLSRequirerCharm(CharmBase):
             self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
+        mode = self._get_config_mode()
+        if not mode:
+            logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
+            return
+        self.certificates = TLSCertificatesRequiresV4(
+            charm=self,
+            relationship_name="certificates",
+            certificate_requests=self._get_certificate_requests(),
+            mode=mode,
+        )
 
     @property
     def _certificates_relation_created(self) -> bool:
@@ -263,7 +267,7 @@ class TLSRequirerCharm(CharmBase):
             return False
         return True
 
-    def _get_config_mode(self) -> Mode:
+    def _get_config_mode(self) -> Optional[Mode]:
         """Return mode from the configuration."""
         modes = {
             "unit": Mode.UNIT,
@@ -271,10 +275,10 @@ class TLSRequirerCharm(CharmBase):
         }
         mode = self.model.config.get("mode")
         if not mode or not isinstance(mode, str):
-            return Mode.UNIT
-        return modes.get(mode, Mode.UNIT)
+            return None
+        return modes.get(mode, None)
 
-    def _get_config_sans_dns(self) -> List[str]:
+    def _get_config_sans_dns(self) -> Tuple[str, ...]:
         """Return DNS Subject Alternative Names from the configuration.
 
         If `sans_dns` config option is set, it will be used as a list of DNS
@@ -283,12 +287,12 @@ class TLSRequirerCharm(CharmBase):
         """
         config_sans_dns = self.model.config.get("sans_dns", "")
         if config_sans_dns and isinstance(config_sans_dns, str):
-            return config_sans_dns.split(",")
+            return tuple(config_sans_dns.split(","))
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return [f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"]
+            return (f"{self.app.name}-{self._get_unit_number()}.{self.model.name}",)
         elif mode == Mode.APP:
-            return [f"{self.app.name}.{self.model.name}"]
+            return (f"{self.app.name}.{self.model.name}",)
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _get_config_organization_name(self) -> Optional[str]:
@@ -312,15 +316,7 @@ class TLSRequirerCharm(CharmBase):
         return self._get_str_config("locality_name")
 
     def _get_str_config(self, key: str) -> Optional[str]:
-        """Return value of specified string juju config.
-
-        Checks type and makes sure to return a string or a None
-
-        Args:
-            key: config option key
-        Returns:
-            Value of the config or None
-        """
+        """Return value of specified string juju config."""
         value = self.model.config.get(key, None)
         if not value or not isinstance(value, str):
             return None

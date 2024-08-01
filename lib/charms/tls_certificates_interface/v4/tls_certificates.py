@@ -278,9 +278,10 @@ class _Certificate(BaseModel):
     recommended_expiry_notification_time: Optional[int] = None
     revoked: Optional[bool] = None
 
-    def to_provider_certificate(self) -> "ProviderCertificate":
+    def to_provider_certificate(self, relation_id: int) -> "ProviderCertificate":
         """Convert to a ProviderCertificate."""
         return ProviderCertificate(
+            relation_id=relation_id,
             certificate=Certificate.from_string(self.certificate),
             certificate_signing_request=CertificateSigningRequest.from_string(
                 self.certificate_signing_request
@@ -351,9 +352,9 @@ class Certificate:
 
     raw: str
     common_name: str
-    sans_dns: Optional[List[str]] = None
-    sans_ip: Optional[List[str]] = None
-    sans_oid: Optional[List[str]] = None
+    sans_dns: Optional[Tuple[str, ...]] = None
+    sans_ip: Optional[Tuple[str, ...]] = None
+    sans_oid: Optional[Tuple[str, ...]] = None
     email_address: Optional[str] = None
     organization: Optional[str] = None
     organizational_unit: Optional[str] = None
@@ -389,25 +390,26 @@ class Certificate:
             sans = certificate_object.extensions.get_extension_for_class(
                 x509.SubjectAlternativeName
             ).value
-            sans_dns = [
+            sans_dns = tuple(
                 str(san)
                 for san in sans.get_values_for_type(x509.DNSName)
                 if isinstance(san, x509.DNSName)
-            ]
-            sans_ip = [
+            )
+            sans_ip = tuple(
                 str(san)
                 for san in sans.get_values_for_type(x509.IPAddress)
                 if isinstance(san, x509.IPAddress)
-            ]
-            sans_oid = [
+            )
+            sans_oid = tuple(
                 str(san)
                 for san in sans.get_values_for_type(x509.RegisteredID)
                 if isinstance(san, x509.RegisteredID)
-            ]
+            )
         except x509.ExtensionNotFound:
-            sans_dns = []
-            sans_ip = []
-            sans_oid = []
+            logger.debug("No SANs found in certificate")
+            sans_dns = None
+            sans_ip = None
+            sans_oid = None
         expiry_time = certificate_object.not_valid_after_utc
         validity_start_time = certificate_object.not_valid_before_utc
 
@@ -422,8 +424,8 @@ class Certificate:
             organization=str(organization_name[0].value) if organization_name else None,
             email_address=str(email_address[0].value) if email_address else None,
             sans_dns=sans_dns,
-            sans_ip=sans_ip if sans_ip else None,
-            sans_oid=sans_oid if sans_oid else None,
+            sans_ip=sans_ip,
+            sans_oid=sans_oid,
             expiry_time=expiry_time,
             validity_start_time=validity_start_time,
         )
@@ -435,9 +437,9 @@ class CertificateSigningRequest:
 
     raw: str
     common_name: str
-    sans_dns: Optional[List[str]] = None
-    sans_ip: Optional[List[str]] = None
-    sans_oid: Optional[List[str]] = None
+    sans_dns: Optional[Tuple[str, ...]] = None
+    sans_ip: Optional[Tuple[str, ...]] = None
+    sans_oid: Optional[Tuple[str, ...]] = None
     email_address: Optional[str] = None
     organization: Optional[str] = None
     organizational_unit: Optional[str] = None
@@ -490,26 +492,14 @@ class CertificateSigningRequest:
         email_address = csr_object.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)
         try:
             sans = csr_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-            sans_dns = [
-                str(san)
-                for san in sans.get_values_for_type(x509.DNSName)
-                if isinstance(san, x509.DNSName)
-            ]
-            sans_ip = [
-                str(san)
-                for san in sans.get_values_for_type(x509.IPAddress)
-                if isinstance(san, x509.IPAddress)
-            ]
-            sans_oid = [
-                str(san)
-                for san in sans.get_values_for_type(x509.RegisteredID)
-                if isinstance(san, x509.RegisteredID)
-            ]
+            sans_dns = tuple(sans.get_values_for_type(x509.DNSName))
+            sans_ip = tuple([str(san) for san in sans.get_values_for_type(x509.IPAddress)])
+            sans_oid = tuple([str(san) for san in sans.get_values_for_type(x509.RegisteredID)])
         except x509.ExtensionNotFound:
-            sans = []
-            sans_dns = []
-            sans_ip = []
-            sans_oid = []
+            sans = ()
+            sans_dns = ()
+            sans_ip = ()
+            sans_oid = ()
         return CertificateSigningRequest(
             raw=csr.strip(),
             common_name=str(common_name[0].value),
@@ -569,16 +559,7 @@ class CertificateSigningRequest:
         """
         csr_object = x509.load_pem_x509_csr(self.raw.encode("utf-8"))
         cert_object = x509.load_pem_x509_certificate(certificate.raw.encode("utf-8"))
-
-        if csr_object.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ) != cert_object.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ):
-            return False
-        return True
+        return csr_object.public_key() == cert_object.public_key()
 
     def get_sha256_hex(self) -> str:
         """Calculate the hash of the provided data and return the hexadecimal representation."""
@@ -596,9 +577,9 @@ class CertificateRequest:
     """
 
     common_name: str
-    sans_dns: Optional[List[str]] = None
-    sans_ip: Optional[List[str]] = None
-    sans_oid: Optional[List[str]] = None
+    sans_dns: Optional[Tuple[str, ...]] = None
+    sans_ip: Optional[Tuple[str, ...]] = None
+    sans_oid: Optional[Tuple[str, ...]] = None
     email_address: Optional[str] = None
     organization: Optional[str] = None
     organizational_unit: Optional[str] = None
@@ -672,6 +653,7 @@ class CertificateRequest:
 class ProviderCertificate:
     """This class represents a certificate provided by the TLS provider."""
 
+    relation_id: int
     certificate: Certificate
     certificate_signing_request: CertificateSigningRequest
     ca: Certificate
@@ -907,6 +889,7 @@ class TLSCertificatesRequiresV4(Object):
         """Remove existing CSR from relation data and create a new one."""
         self._remove_requirer_csr_from_relation_data(csr)
         self._send_certificate_requests()
+        logger.info("Renewed certificate request")
 
     def _remove_requirer_csr_from_relation_data(self, csr: CertificateSigningRequest) -> None:
         relation = self.model.get_relation(self.relationship_name)
@@ -984,7 +967,7 @@ class TLSCertificatesRequiresV4(Object):
             return False
         return True
 
-    def _csr_matches_request_attributes(self, csr: CertificateSigningRequest) -> bool:
+    def _csr_matches_certificate_request(self, csr: CertificateSigningRequest) -> bool:
         for certificate_request in self.certificate_requests:
             if csr.to_certificate_request() == certificate_request:
                 return True
@@ -1043,7 +1026,7 @@ class TLSCertificatesRequiresV4(Object):
             logger.warning("Invalid relation data")
             return []
         return [
-            certificate.to_provider_certificate()
+            certificate.to_provider_certificate(relation_id=relation.id)
             for certificate in provider_relation_data.certificates
         ]
 
@@ -1136,7 +1119,7 @@ class TLSCertificatesRequiresV4(Object):
                         secret = self.model.get_secret(label=secret_label)
                         secret.remove_all_revisions()
                 else:
-                    if not self._csr_matches_request_attributes(
+                    if not self._csr_matches_certificate_request(
                         provider_certificate.certificate_signing_request
                     ):
                         logger.debug("Certificate requested for different attributes - Skipping")
@@ -1179,10 +1162,18 @@ class TLSCertificatesRequiresV4(Object):
         - The CSR public key does not match the private key.
         """
         for requirer_csr in self.get_csrs_from_requirer_relation_data():
-            if not self._csr_matches_request_attributes(requirer_csr):
+            if not self._csr_matches_certificate_request(requirer_csr):
                 self._remove_requirer_csr_from_relation_data(requirer_csr)
+                logger.info(
+                    "Removed CSR from relation data because \
+                        it did not match any certificate request"
+                )
             elif self.private_key and not requirer_csr.matches_private_key(self.private_key):
                 self._remove_requirer_csr_from_relation_data(requirer_csr)
+                logger.info(
+                    "Removed CSR from relation data because \
+                        it did not match the private key"
+                )
 
     def _get_next_secret_expiry_time(
         self, provider_certificate: ProviderCertificate
@@ -1251,6 +1242,7 @@ class TLSCertificatesProvidesV4(Object):
 
     def __init__(self, charm: CharmBase, relationship_name: str):
         super().__init__(charm, relationship_name)
+        self.framework.observe(charm.on[relationship_name].relation_joined, self._configure)
         self.framework.observe(charm.on[relationship_name].relation_changed, self._configure)
         self.framework.observe(charm.on.update_status, self._configure)
         self.charm = charm
@@ -1265,22 +1257,22 @@ class TLSCertificatesProvidesV4(Object):
         """
         if not self.model.unit.is_leader():
             return
-        self._revoke_certificates_for_which_no_csr_exists()
+        self._remove_certificates_for_which_no_csr_exists()
 
-    def _revoke_certificates_for_which_no_csr_exists(self) -> None:
+    def _remove_certificates_for_which_no_csr_exists(self) -> None:
         provider_certificates = self._get_provider_certificates()
-        requirer_csrs = self.get_certificate_requests()
+        requirer_csrs = [
+            request.certificate_signing_request for request in self.get_certificate_requests()
+        ]
         for provider_certificate in provider_certificates:
-            for requirer_csr in requirer_csrs:
-                if (
-                    provider_certificate.certificate_signing_request
-                    == requirer_csr.certificate_signing_request
-                ):
-                    tls_relation = self._get_tls_relations(relation_id=requirer_csr.relation_id)
-                    self._remove_provider_certificate(
-                        certificate=provider_certificate.certificate,
-                        relation=tls_relation[0],
-                    )
+            if provider_certificate.certificate_signing_request not in requirer_csrs:
+                tls_relation = self._get_tls_relations(
+                    relation_id=provider_certificate.relation_id
+                )
+                self._remove_provider_certificate(
+                    certificate=provider_certificate.certificate,
+                    relation=tls_relation[0],
+                )
 
     def _get_tls_relations(self, relation_id: Optional[int] = None) -> List[Relation]:
         return (
@@ -1392,13 +1384,11 @@ class TLSCertificatesProvidesV4(Object):
     def set_relation_certificate(
         self,
         provider_certificate: ProviderCertificate,
-        relation_id: int,
     ) -> None:
         """Add certificates to relation data.
 
         Args:
             provider_certificate (ProviderCertificate): ProviderCertificate object
-            relation_id (int): Juju relation ID
 
         Returns:
             None
@@ -1407,7 +1397,7 @@ class TLSCertificatesProvidesV4(Object):
             logger.warning("Unit is not a leader - will not set relation data")
             return
         certificates_relation = self.model.get_relation(
-            relation_name=self.relationship_name, relation_id=relation_id
+            relation_name=self.relationship_name, relation_id=provider_certificate.relation_id
         )
         if not certificates_relation:
             raise TLSCertificatesError(f"Relation {self.relationship_name} does not exist")
@@ -1445,7 +1435,7 @@ class TLSCertificatesProvidesV4(Object):
                 logger.warning("Relation %s does not have an application", relation.id)
                 continue
             for certificate in self._load_provider_certificates(relation):
-                certificates.append(certificate.to_provider_certificate())
+                certificates.append(certificate.to_provider_certificate(relation_id=relation.id))
         return certificates
 
     def get_outstanding_certificate_requests(
