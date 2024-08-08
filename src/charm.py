@@ -5,7 +5,7 @@
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
 import logging
-from typing import List, Optional, Tuple, cast
+from typing import FrozenSet, List, Optional, cast
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
@@ -297,7 +297,7 @@ class TLSRequirerCharm(CharmBase):
             return None
         return modes.get(mode, None)
 
-    def _get_config_sans_dns(self) -> Tuple[str, ...]:
+    def _get_config_sans_dns(self) -> FrozenSet[str]:
         """Return DNS Subject Alternative Names from the configuration.
 
         If `sans_dns` config option is set, it will be used as a list of DNS
@@ -306,12 +306,12 @@ class TLSRequirerCharm(CharmBase):
         """
         config_sans_dns = self.model.config.get("sans_dns", "")
         if config_sans_dns and isinstance(config_sans_dns, str):
-            return tuple(config_sans_dns.split(","))
+            return frozenset(config_sans_dns.split(","))
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return (f"{self.app.name}-{self._get_unit_number()}.{self.model.name}",)
+            return frozenset(["{self.app.name}-{self._get_unit_number()}.{self.model.name}"])
         elif mode == Mode.APP:
-            return (f"{self.app.name}.{self.model.name}",)
+            return frozenset([f"{self.app.name}.{self.model.name}"])
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _get_config_organization_name(self) -> Optional[str]:
