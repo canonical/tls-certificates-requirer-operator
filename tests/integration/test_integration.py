@@ -103,7 +103,7 @@ class TestTLSRequirerUnitMode:
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="stable",
+            channel="edge",
         )
         await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})
         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
@@ -128,6 +128,7 @@ class TestTLSRequirerUnitMode:
             apps=[self.APP_NAME],
             status="active",
             timeout=1000,
+            wait_for_exact_units=NUM_UNITS,
         )
 
     async def test_given_self_signed_certificates_deployed_when_integrate_then_status_is_active(  # noqa: E501
@@ -229,7 +230,7 @@ class TestTLSRequirerAppMode:
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="stable",
+            channel="edge",
         )
         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
         yield
@@ -244,7 +245,7 @@ class TestTLSRequirerAppMode:
         await asyncio.gather(*remove_coroutines)
 
     @pytest.mark.abort_on_fail
-    async def test_given_charm_is_built_when_deployed_then_status_is_active(
+    async def test_given_charm_is_built_when_deployed_then_status_is_idle(
         self,
         ops_test: OpsTest,
         deploy,
@@ -252,7 +253,6 @@ class TestTLSRequirerAppMode:
         assert ops_test.model
         await ops_test.model.wait_for_idle(
             apps=[self.APP_NAME],
-            status="active",
             timeout=1000,
         )
 
@@ -273,7 +273,6 @@ class TestTLSRequirerAppMode:
         )
         await ops_test.model.wait_for_idle(
             apps=[self.APP_NAME],
-            status="active",
             timeout=1000,
         )
 
@@ -300,7 +299,6 @@ class TestTLSRequirerAppMode:
         assert ops_test.model
         await ops_test.model.wait_for_idle(
             apps=[self.APP_NAME],
-            status="active",
             timeout=1000,
         )
 
