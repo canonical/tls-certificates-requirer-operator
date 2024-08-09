@@ -60,6 +60,13 @@ config:
           - `unit`: Certificates are managed at the unit level. Each unit will have its own certificate.
           - `app`: Certificates are managed at the application level. The application can have 1 or more certificates.
 
+    num_certificates:
+      type: int
+      default: 1
+      description: |
+        Number of certificates to request.
+        If the mode is set to `unit`, each unit will request this number of certificates.
+
     common_name:
       type: string
       description: |

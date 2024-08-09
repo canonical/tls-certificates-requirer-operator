@@ -155,14 +155,15 @@ class TLSRequirerCharm(CharmBase):
     def _get_certificate_requests(self) -> List[CertificateRequest]:
         return [
             CertificateRequest(
-                common_name=self._get_common_name(),
-                sans_dns=self._get_config_sans_dns(),
+                common_name=self._get_common_name(i),
+                sans_dns=self._get_config_sans_dns(i),
                 organization=self._get_config_organization_name(),
                 email_address=self._get_config_email_address(),
                 country_name=self._get_config_country_name(),
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
+            for i in range(self._get_config_num_certificates())
         ]
 
     def _unit_certificate_is_stored(self) -> bool:
@@ -263,8 +264,11 @@ class TLSRequirerCharm(CharmBase):
         certificate_secret.set_content(content=certificate_secret_content)
         logger.info("App certificate is updated: %s", str(assigned_certificate.certificate))
 
-    def _get_common_name(self) -> str:
+    def _get_common_name(self, certificate_number: Optional[int] = None) -> str:
         """Return common name.
+
+        Args:
+            certificate_number: Certificate number.
 
         If `common_name` config option is set, it will be used as a common name.
         Otherwise, the common name will be generated based on the application name and unit number.
@@ -274,9 +278,11 @@ class TLSRequirerCharm(CharmBase):
             return config_common_name
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
+            return (
+                f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
+            )
         elif mode == Mode.APP:
-            return f"{self.app.name}.{self.model.name}"
+            return f"{self.app.name}-{certificate_number}.{self.model.name}"
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _mode_config_is_valid(self) -> bool:
@@ -297,7 +303,14 @@ class TLSRequirerCharm(CharmBase):
             return None
         return modes.get(mode, None)
 
-    def _get_config_sans_dns(self) -> FrozenSet[str]:
+    def _get_config_num_certificates(self) -> int:
+        """Return number of certificates from the configuration."""
+        num_certificates = self.model.config.get("num_certificates", 1)
+        if not isinstance(num_certificates, int):
+            return 1
+        return num_certificates
+
+    def _get_config_sans_dns(self, certificate_number: Optional[int]) -> FrozenSet[str]:
         """Return DNS Subject Alternative Names from the configuration.
 
         If `sans_dns` config option is set, it will be used as a list of DNS
@@ -309,9 +322,13 @@ class TLSRequirerCharm(CharmBase):
             return frozenset(config_sans_dns.split(","))
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return frozenset(["{self.app.name}-{self._get_unit_number()}.{self.model.name}"])
+            return frozenset(
+                [
+                    f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
+                ]
+            )
         elif mode == Mode.APP:
-            return frozenset([f"{self.app.name}.{self.model.name}"])
+            return frozenset([f"{self.app.name}-{certificate_number}.{self.model.name}"])
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _get_config_organization_name(self) -> Optional[str]:
