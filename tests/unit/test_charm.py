@@ -113,14 +113,6 @@ class TestCharmUnitMode:
         self,
         patch_get_assigned_certificate,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
-
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
@@ -130,8 +122,6 @@ class TestCharmUnitMode:
         state_in = scenario.State(
             config={
                 "mode": "unit",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -139,7 +129,7 @@ class TestCharmUnitMode:
                 "locality_name": LOCALITY_NAME,
             },
             relations=[certificates_relation],
-            secrets=[csr_secret],
+            secrets=[],
         )
 
         patch_get_assigned_certificate.return_value = (
@@ -156,8 +146,8 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[1].label == "certificate-0"
-        assert state_out.secrets[1].contents == {
+        assert state_out.secrets[0].label == f"tls-certificates-requirer-0.{state_in.model.name}"
+        assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
 
@@ -184,15 +174,8 @@ class TestCharmUnitMode:
             ),
             PrivateKey.from_string(self.private_key),
         )
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
         certificate_secret = scenario.Secret(
-            id="2",
+            id="1",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="unit",
             revision=0,
@@ -211,7 +194,7 @@ class TestCharmUnitMode:
                 "locality_name": LOCALITY_NAME,
             },
             relations=[certificates_relation],
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -224,19 +207,13 @@ class TestCharmUnitMode:
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self, patch_get_assigned_certificate
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
+            id="1",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label="certificate-0",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
 
         certificates_relation = scenario.Relation(
@@ -246,10 +223,9 @@ class TestCharmUnitMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "unit",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -257,7 +233,7 @@ class TestCharmUnitMode:
                 "locality_name": LOCALITY_NAME,
             },
             relations=[certificates_relation],
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         new_common_name = "pizza.com"
@@ -290,7 +266,7 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[1].contents[1] == {
+        assert state_out.secrets[0].contents[1] == {
             "certificate": new_certificate,
             "ca-certificate": CA,
             "csr": self.csr,
@@ -316,19 +292,13 @@ class TestCharmUnitMode:
         self,
         patch_get_assigned_certificate,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
+            id="1",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="unit",
             revision=0,
-            label="certificate-0",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -349,12 +319,13 @@ class TestCharmUnitMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "unit",
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         action_output = self.ctx.run_action(action="get-certificate", state=state_in)
@@ -369,19 +340,13 @@ class TestCharmUnitMode:
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
         self,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
             id="2",
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label="certificate-0",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -390,16 +355,17 @@ class TestCharmUnitMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "unit",
             },
             relations=[certificates_relation],
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         state_out = self.ctx.run(event=certificates_relation.broken_event, state=state_in)
 
-        assert state_out.secrets[1].contents == {}
+        assert state_out.secrets[0].contents == {}
 
 
 class TestCharmAppMode:
@@ -429,13 +395,6 @@ class TestCharmAppMode:
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
@@ -445,8 +404,6 @@ class TestCharmAppMode:
         state_in = scenario.State(
             config={
                 "mode": "app",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -455,7 +412,7 @@ class TestCharmAppMode:
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret],
+            secrets=[],
         )
 
         state_out = self.ctx.run(event="collect_unit_status", state=state_in)
@@ -469,13 +426,6 @@ class TestCharmAppMode:
         self,
         patch_get_assigned_certificate,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
@@ -497,8 +447,6 @@ class TestCharmAppMode:
         state_in = scenario.State(
             config={
                 "mode": "app",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -507,13 +455,13 @@ class TestCharmAppMode:
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret],
+            secrets=[],
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[1].label == "certificate"
-        assert state_out.secrets[1].contents == {
+        assert state_out.secrets[0].label == f"tls-certificates-requirer.{state_in.model.name}"
+        assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
 
@@ -524,13 +472,6 @@ class TestCharmAppMode:
         self,
         patch_get_assigned_certificate,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
@@ -551,8 +492,6 @@ class TestCharmAppMode:
         state_in = scenario.State(
             config={
                 "mode": "app",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -561,7 +500,7 @@ class TestCharmAppMode:
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret],
+            secrets=[],
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -574,19 +513,13 @@ class TestCharmAppMode:
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self, patch_get_assigned_certificate
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
+            id="1",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label="certificate",
+            label=f"tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -595,9 +528,9 @@ class TestCharmAppMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "app",
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -606,7 +539,7 @@ class TestCharmAppMode:
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         new_common_name = "blou.ca"
@@ -639,7 +572,7 @@ class TestCharmAppMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[1].contents[1] == {
+        assert state_out.secrets[0].contents[1] == {
             "certificate": new_certificate,
             "ca-certificate": CA,
             "csr": self.csr,
@@ -665,19 +598,13 @@ class TestCharmAppMode:
         self,
         patch_get_assigned_certificate,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
             id="2",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="app",
             revision=0,
-            label="certificate",
+            label=f"tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -698,12 +625,13 @@ class TestCharmAppMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "app",
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         action_output = self.ctx.run_action(action="get-certificate", state=state_in)
@@ -718,19 +646,13 @@ class TestCharmAppMode:
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
         self,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="app",
-            revision=0,
-            label="csr-0",
-        )
+        model_name = "abc"
         certificate_secret = scenario.Secret(
             id="2",
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label="certificate",
+            label=f"tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -739,14 +661,15 @@ class TestCharmAppMode:
         )
 
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "app",
             },
             relations=[certificates_relation],
             leader=True,
-            secrets=[csr_secret, certificate_secret],
+            secrets=[certificate_secret],
         )
 
         state_out = self.ctx.run(event=certificates_relation.broken_event, state=state_in)
 
-        assert state_out.secrets[1].contents == {}
+        assert state_out.secrets[0].contents == {}

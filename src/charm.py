@@ -15,7 +15,7 @@ from charms.tls_certificates_interface.v4.tls_certificates import (
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
 from ops.framework import EventBase
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, StatusBase
+from ops.model import ActiveStatus, BlockedStatus, ModelError, SecretNotFoundError, StatusBase
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ class TLSRequirerCharm(CharmBase):
         mode = self._get_config_mode()
         if not mode:
             logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
+            return
+        if mode == Mode.APP and not self.unit.is_leader():
+            logger.warning("This charm can't scale when deployed in app mode")
             return
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
@@ -84,7 +87,9 @@ class TLSRequirerCharm(CharmBase):
         """Collect status for the unit mode."""
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        if not self._unit_certificate_is_stored():
+        if not self._certificate_is_stored(
+            certificate_request=self._get_certificate_requests()[0]
+        ):
             return ActiveStatus("Waiting for unit certificate")
         return ActiveStatus("Unit certificate is available")
 
@@ -94,7 +99,9 @@ class TLSRequirerCharm(CharmBase):
             return BlockedStatus("This charm can't scale when deployed in app mode")
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        if not self._app_certificate_is_stored():
+        if not self._certificate_is_stored(
+            certificate_request=self._get_certificate_requests()[0]
+        ):
             return ActiveStatus("Waiting for app certificate")
         return ActiveStatus("App certificate is available")
 
@@ -104,26 +111,13 @@ class TLSRequirerCharm(CharmBase):
         if not self._mode_config_is_valid():
             logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
             return
-        if mode == Mode.UNIT:
-            self._configure_unit_mode()
-        elif mode == Mode.APP:
-            self._configure_app_mode()
-
-    def _configure_unit_mode(self):
-        """Manage certificate lifecycle when they are managed per unit."""
         if not self._certificates_relation_created:
             return
-        if not self._unit_certificate_is_stored():
-            self._store_unit_certificate()
-
-    def _configure_app_mode(self):
-        """Manage certificate lifecycle when they are managed per application."""
-        if not self.unit.is_leader():
+        if mode == Mode.APP and not self.unit.is_leader():
             return
-        if not self._certificates_relation_created:
-            return
-        if not self._app_certificate_is_stored():
-            self._store_app_certificate()
+        certificate_request = self._get_certificate_requests()[0]
+        if not self._certificate_is_stored(certificate_request=certificate_request):
+            self._store_certificate(mode=Mode.UNIT, certificate_request=certificate_request)
 
     def _on_certificates_relation_broken(self, event: RelationBrokenEvent) -> None:
         """Remove Certificate from juju secret.
@@ -131,24 +125,16 @@ class TLSRequirerCharm(CharmBase):
         Args:
             event: Juju event.
         """
-        if self._unit_certificate_secret_exists:
+        certificate_request = self._get_certificate_requests()[0]
+        if self._certificate_secret_exists(certificate_request=certificate_request):
             try:
                 certificate_secret = self.model.get_secret(
-                    label=self._get_unit_certificate_secret_label()
+                    label=self._get_certificate_secret_label(
+                        certificate_request=certificate_request
+                    )
                 )
-            except SecretNotFoundError:
+            except (SecretNotFoundError, ModelError):
                 logger.warning("Unable to retrieve unit certificate secret")
-                return
-            certificate_secret.remove_all_revisions()
-        if self._app_certificate_secret_exists:
-            if not self.unit.is_leader():
-                return
-            try:
-                certificate_secret = self.model.get_secret(
-                    label=self._get_app_certificate_secret_label()
-                )
-            except SecretNotFoundError:
-                logger.warning("Unable to retrieve app certificate secret")
                 return
             certificate_secret.remove_all_revisions()
 
@@ -165,50 +151,29 @@ class TLSRequirerCharm(CharmBase):
             )
         ]
 
-    def _unit_certificate_is_stored(self) -> bool:
-        """Return whether unit certificate is available in Juju secret."""
-        if not self._unit_certificate_secret_exists:
+    def _certificate_is_stored(self, certificate_request: CertificateRequest) -> bool:
+        """Return whether certificate is available in Juju secret."""
+        if not self._certificate_secret_exists:
             return False
         try:
             stored_certificate_secret = self.model.get_secret(
-                label=self._get_unit_certificate_secret_label()
+                label=self._get_certificate_secret_label(certificate_request=certificate_request)
             )
         except SecretNotFoundError:
-            logger.warning("Unable to retrieve unit certificate secret")
+            logger.warning("Unable to retrieve certificate secret")
             return False
         stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
-            certificate_request=self._get_certificate_requests()[0]
+            certificate_request=certificate_request
         )
         if not assigned_certificate:
             return False
         return str(assigned_certificate.certificate) == stored_certificate
 
-    def _app_certificate_is_stored(self) -> bool:
-        """Return whether app certificate is available in Juju secret."""
-        if not self.unit.is_leader():
-            return False
-        if not self._app_certificate_secret_exists:
-            return False
-        try:
-            stored_certificate_secret = self.model.get_secret(
-                label=self._get_app_certificate_secret_label()
-            )
-        except SecretNotFoundError:
-            logger.warning("Unable to retrieve app certificate secret")
-            return False
-        stored_certificate = stored_certificate_secret.get_content(refresh=True)["certificate"]
-        assigned_certificate, _ = self.certificates.get_assigned_certificate(
-            certificate_request=self._get_certificate_requests()[0]
-        )
-        if not assigned_certificate:
-            return False
-        return str(assigned_certificate.certificate) == stored_certificate
-
-    def _store_unit_certificate(self) -> None:
+    def _store_certificate(self, mode: Mode, certificate_request: CertificateRequest) -> None:
         """Store the assigned unit certificate in a Juju secret."""
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
-            certificate_request=self._get_certificate_requests()[0]
+            certificate_request=certificate_request
         )
         if not assigned_certificate:
             logger.info("No unit certificate is assigned")
@@ -220,48 +185,29 @@ class TLSRequirerCharm(CharmBase):
         }
         try:
             certificate_secret = self.model.get_secret(
-                label=self._get_unit_certificate_secret_label()
+                label=self._get_certificate_secret_label(certificate_request=certificate_request)
             )
         except SecretNotFoundError:
-            self.unit.add_secret(
-                content=certificate_secret_content,
-                label=self._get_unit_certificate_secret_label(),
-            )
+            if mode == Mode.UNIT:
+                self.unit.add_secret(
+                    content=certificate_secret_content,
+                    label=self._get_certificate_secret_label(
+                        certificate_request=certificate_request
+                    ),
+                )
+            elif mode == Mode.APP:
+                self.app.add_secret(
+                    content=certificate_secret_content,
+                    label=self._get_certificate_secret_label(
+                        certificate_request=certificate_request
+                    ),
+                )
             logger.info(
                 "New unit certificate is stored: %s", str(assigned_certificate.certificate)
             )
             return
         certificate_secret.set_content(content=certificate_secret_content)
         logger.info("Unit certificate is updated: %s", str(assigned_certificate.certificate))
-
-    def _store_app_certificate(self) -> None:
-        """Store the assigned app certificate in a Juju secret."""
-        if not self.unit.is_leader():
-            return
-        assigned_certificate, _ = self.certificates.get_assigned_certificate(
-            certificate_request=self._get_certificate_requests()[0]
-        )
-        if not assigned_certificate:
-            logger.info("No app certificate is assigned")
-            return
-        certificate_secret_content = {
-            "certificate": str(assigned_certificate.certificate),
-            "ca-certificate": str(assigned_certificate.ca),
-            "csr": str(assigned_certificate.certificate_signing_request),
-        }
-        try:
-            certificate_secret = self.model.get_secret(
-                label=self._get_app_certificate_secret_label()
-            )
-        except SecretNotFoundError:
-            self.app.add_secret(
-                content=certificate_secret_content,
-                label=self._get_app_certificate_secret_label(),
-            )
-            logger.info("New app certificate is stored: %s", str(assigned_certificate.certificate))
-            return
-        certificate_secret.set_content(content=certificate_secret_content)
-        logger.info("App certificate is updated: %s", str(assigned_certificate.certificate))
 
     def _get_common_name(self) -> str:
         """Return common name.
@@ -341,20 +287,17 @@ class TLSRequirerCharm(CharmBase):
             return None
         return value
 
-    @property
-    def _unit_certificate_secret_exists(self) -> bool:
-        return self._secret_exists(label=self._get_unit_certificate_secret_label())
-
-    @property
-    def _app_certificate_secret_exists(self) -> bool:
-        return self._secret_exists(label=self._get_app_certificate_secret_label())
+    def _certificate_secret_exists(self, certificate_request: CertificateRequest) -> bool:
+        return self._secret_exists(
+            label=self._get_certificate_secret_label(certificate_request=certificate_request)
+        )
 
     def _secret_exists(self, label: str) -> bool:
         """Return whether a given secret exists."""
         try:
             self.model.get_secret(label=label)
             return True
-        except SecretNotFoundError:
+        except (SecretNotFoundError, KeyError):
             return False
 
     def _on_get_certificate_action(self, event: ActionEvent) -> None:
@@ -366,42 +309,27 @@ class TLSRequirerCharm(CharmBase):
         if not self._mode_config_is_valid():
             event.fail("Invalid mode configuration: only 'unit' and 'app' are allowed")
             return
-        mode = self._get_config_mode()
-        if mode == Mode.UNIT:
-            if self._unit_certificate_is_stored():
-                secret = self.model.get_secret(label=self._get_unit_certificate_secret_label())
-                content = secret.get_content(refresh=True)
-                event.set_results(
-                    {
-                        "certificate": content["certificate"],
-                        "ca-certificate": content["ca-certificate"],
-                        "csr": content["csr"],
-                    }
-                )
-            else:
-                event.fail("Unit certificate not available")
-        elif mode == Mode.APP:
-            if self._app_certificate_is_stored():
-                secret = self.model.get_secret(label=self._get_app_certificate_secret_label())
-                content = secret.get_content(refresh=True)
-                event.set_results(
-                    {
-                        "certificate": content["certificate"],
-                        "ca-certificate": content["ca-certificate"],
-                        "csr": content["csr"],
-                    }
-                )
-            else:
-                event.fail("App certificate not available")
+        certificate_request = self._get_certificate_requests()[0]
+        if self._certificate_is_stored(certificate_request=certificate_request):
+            secret = self.model.get_secret(
+                label=self._get_certificate_secret_label(certificate_request=certificate_request)
+            )
+            content = secret.get_content(refresh=True)
+            event.set_results(
+                {
+                    "certificate": content["certificate"],
+                    "ca-certificate": content["ca-certificate"],
+                    "csr": content["csr"],
+                }
+            )
+        else:
+            event.fail("Certificate not available")
 
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]
 
-    def _get_unit_certificate_secret_label(self) -> str:
-        return f"certificate-{self._get_unit_number()}"
-
-    def _get_app_certificate_secret_label(self) -> str:
-        return "certificate"
+    def _get_certificate_secret_label(self, certificate_request: CertificateRequest) -> str:
+        return certificate_request.common_name
 
 
 if __name__ == "__main__":
