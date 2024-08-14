@@ -16,6 +16,7 @@ certifi==2024.7.4
     #   requests
 cffi==1.16.0
     # via
+    #   -c requirements.txt
     #   cryptography
     #   pynacl
 charset-normalizer==3.3.2
@@ -25,14 +26,16 @@ codespell==2.3.0
 coverage[toml]==7.6.1
     # via -r test-requirements.in
 cryptography==43.0.0
-    # via paramiko
+    # via
+    #   -c requirements.txt
+    #   paramiko
 decorator==5.1.1
     # via
     #   ipdb
     #   ipython
 executing==2.0.1
     # via stack-data
-google-auth==2.32.0
+google-auth==2.33.0
     # via kubernetes
 hvac==2.3.0
     # via juju
@@ -68,11 +71,17 @@ oauthlib==3.2.2
     # via
     #   kubernetes
     #   requests-oauthlib
+ops==2.15.0
+    # via
+    #   -c requirements.txt
+    #   ops-scenario
+ops-scenario==6.1.5
+    # via -r test-requirements.in
 packaging==24.1
     # via
     #   juju
     #   pytest
-paramiko==3.4.0
+paramiko==3.4.1
     # via juju
 parso==0.8.4
     # via jedi
@@ -96,7 +105,9 @@ pyasn1==0.6.0
 pyasn1-modules==0.4.0
     # via google-auth
 pycparser==2.22
-    # via cffi
+    # via
+    #   -c requirements.txt
+    #   cffi
 pygments==2.18.0
     # via ipython
 pymacaroons==0.13.0
@@ -110,7 +121,7 @@ pyrfc3339==1.1
     # via
     #   juju
     #   macaroonbakery
-pyright==1.1.375
+pyright==1.1.376
     # via -r test-requirements.in
 pytest==8.3.2
     # via
@@ -129,8 +140,11 @@ pytz==2024.1
     # via pyrfc3339
 pyyaml==6.0.1
     # via
+    #   -c requirements.txt
     #   juju
     #   kubernetes
+    #   ops
+    #   ops-scenario
     #   pytest-operator
 requests==2.32.3
     # via
@@ -160,7 +174,9 @@ traitlets==5.14.3
     #   ipython
     #   matplotlib-inline
 typing-extensions==4.12.2
-    # via typing-inspect
+    # via
+    #   -c requirements.txt
+    #   typing-inspect
 typing-inspect==0.9.0
     # via juju
 urllib3==2.2.2
@@ -170,6 +186,9 @@ urllib3==2.2.2
 wcwidth==0.2.13
     # via prompt-toolkit
 websocket-client==1.8.0
-    # via kubernetes
+    # via
+    #   -c requirements.txt
+    #   kubernetes
+    #   ops
 websockets==12.0
     # via juju
