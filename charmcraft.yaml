@@ -71,6 +71,9 @@ config:
       type: string
       description: |
         Common name to be used in the certificate.
+        This configuration option should not be set when `num_certificates` is greater than 1.
+        If set, only the leader unit will request the certificate with this common name.
+        Other units will not request certificates.
         If not set, the following value will be used (depending on the mode):
           - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
           - `app`: `<app name>-<certificate number>.<model name>`
@@ -79,6 +82,8 @@ config:
       type: string
       description: |
         Comma separated list of DNS Subject Alternative Names (SAN's) to be used in the certificate.
+        If set, only the leader unit will request the certificate with this common name.
+        Other units will not request certificates.
         If not set, the following value will be used (depending on the mode):
           - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
           - `app`: `<app name>-<certificate number>.<model name>`
