@@ -23,7 +23,6 @@ NUM_UNITS = 3
 async def wait_for_certificate_available(
     ops_test: OpsTest,
     unit_name: str,
-    sans_dns: list[str],
     email_address: Optional[str] = None,
     organization_name: Optional[str] = None,
     country_name: Optional[str] = None,
@@ -60,7 +59,6 @@ async def wait_for_certificate_available(
             country_name=country_name,
             state_or_province_name=state_or_province_name,
             locality_name=locality_name,
-            sans_dns=sans_dns,
         ):
             logger.info("Certificate does not have the expected attributes")
             time.sleep(1)
@@ -90,7 +88,6 @@ class TestTLSRequirerUnitMode:
             charm,
             config={
                 "mode": "unit",
-                "sans_dns": "example.com,example.org",
                 "organization_name": "Canonical",
                 "country_name": "GB",
                 "state_or_province_name": "London",
@@ -166,7 +163,6 @@ class TestTLSRequirerUnitMode:
                 country_name="GB",
                 state_or_province_name="London",
                 locality_name="London",
-                sans_dns=["example.com", "example.org"],
             )
 
     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
@@ -200,7 +196,6 @@ class TestTLSRequirerUnitMode:
             country_name="CA",
             state_or_province_name="Quebec",
             locality_name="Montreal",
-            sans_dns=["example.com", "example.org"],
         )
 
 
@@ -217,7 +212,6 @@ class TestTLSRequirerAppMode:
             charm,
             config={
                 "mode": "app",
-                "sans_dns": "example.com,example.org",
                 "organization_name": "Canonical",
                 "country_name": "GB",
                 "state_or_province_name": "London",
@@ -290,7 +284,6 @@ class TestTLSRequirerAppMode:
             country_name="GB",
             state_or_province_name="London",
             locality_name="London",
-            sans_dns=["example.com", "example.org"],
         )
 
     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
@@ -324,5 +317,4 @@ class TestTLSRequirerAppMode:
             country_name="CA",
             state_or_province_name="Quebec",
             locality_name="Montreal",
-            sans_dns=["example.com", "example.org"],
         )

@@ -5,7 +5,7 @@
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
 import logging
-from typing import FrozenSet, List, Optional, cast
+from typing import FrozenSet, List, Optional
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
@@ -41,8 +41,11 @@ class TLSRequirerCharm(CharmBase):
         if not mode:
             logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
             return
+        if self._get_config_common_name() and not self.unit.is_leader():
+            logger.warning("Only leader unit will request a certificate with a custom common name")
+            return
         if mode == Mode.APP and not self.unit.is_leader():
-            logger.warning("This charm can't scale when deployed in app mode")
+            logger.warning("Only leader unit will request a certificate in app mode")
             return
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
@@ -142,7 +145,7 @@ class TLSRequirerCharm(CharmBase):
         return [
             CertificateRequest(
                 common_name=self._get_common_name(),
-                sans_dns=self._get_config_sans_dns(),
+                sans_dns=self._get_sans_dns(),
                 organization=self._get_config_organization_name(),
                 email_address=self._get_config_email_address(),
                 country_name=self._get_config_country_name(),
@@ -209,13 +212,17 @@ class TLSRequirerCharm(CharmBase):
         certificate_secret.set_content(content=certificate_secret_content)
         logger.info("Unit certificate is updated: %s", str(assigned_certificate.certificate))
 
+    def _get_config_common_name(self) -> Optional[str]:
+        """Return common name from the configuration."""
+        return self._get_str_config("common_name")
+
     def _get_common_name(self) -> str:
         """Return common name.
 
         If `common_name` config option is set, it will be used as a common name.
         Otherwise, the common name will be generated based on the application name and unit number.
         """
-        config_common_name = cast(str, self.model.config.get("common_name"))
+        config_common_name = self._get_config_common_name()
         if config_common_name:
             return config_common_name
         mode = self._get_config_mode()
@@ -243,8 +250,8 @@ class TLSRequirerCharm(CharmBase):
             return None
         return modes.get(mode, None)
 
-    def _get_config_sans_dns(self) -> FrozenSet[str]:
-        """Return DNS Subject Alternative Names from the configuration.
+    def _get_sans_dns(self) -> FrozenSet[str]:
+        """Return DNS Subject Alternative Names.
 
         If `sans_dns` config option is set, it will be used as a list of DNS
         Subject Alternative Names. Otherwise, the list will contain a single

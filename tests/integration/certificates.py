@@ -4,7 +4,7 @@
 
 
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from cryptography import x509
 
@@ -24,16 +24,6 @@ class Certificate:
     @property
     def subject(self) -> Optional[str]:
         return self.certificate.subject.rfc4514_string()
-
-    @property
-    def sans_dns(self) -> List[str]:
-        try:
-            sans = self.certificate.extensions.get_extension_for_class(
-                x509.SubjectAlternativeName
-            ).value.get_values_for_type(x509.DNSName)
-        except x509.ExtensionNotFound:
-            return []
-        return [str(san) for san in sans]
 
     @property
     def organization_name(self) -> Optional[str]:
@@ -87,7 +77,6 @@ class Certificate:
 
     def has_attributes(
         self,
-        sans_dns: list[str],
         email_address: Optional[str] = None,
         organization_name: Optional[str] = None,
         country_name: Optional[str] = None,
@@ -121,8 +110,5 @@ class Certificate:
             logger.info(
                 "Email address does not match: %s != %s", self.email_address, email_address
             )
-            return False
-        if sorted(self.sans_dns) != sorted(sans_dns):
-            logger.info("SANs do not match: %s != %s", self.sans_dns, sans_dns)
             return False
         return True

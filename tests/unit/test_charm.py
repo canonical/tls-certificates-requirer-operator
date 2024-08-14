@@ -185,8 +185,6 @@ class TestCharmUnitMode:
         state_in = scenario.State(
             config={
                 "mode": "unit",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
