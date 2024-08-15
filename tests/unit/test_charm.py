@@ -14,6 +14,7 @@ from lib.charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateSigningRequest,
     PrivateKey,
     ProviderCertificate,
+    TLSCertificatesRequiresV4,
 )
 
 COMMON_NAME = "banana.com"
@@ -76,6 +77,14 @@ class TestCharmInvalidMode:
 
 
 class TestCharmUnitMode:
+    patcher_tls_requires = patch(
+        "charm.TLSCertificatesRequiresV4", autospec=TLSCertificatesRequiresV4
+    )
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start().return_value
+
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
         self.private_key = generate_private_key()
@@ -167,12 +176,8 @@ class TestCharmUnitMode:
 
         assert state_out.unit_status == ActiveStatus("Waiting for unit certificate")
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
-        patch_get_assigned_certificate,
     ):
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -193,16 +198,17 @@ class TestCharmUnitMode:
             secrets=[],
         )
 
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -212,28 +218,24 @@ class TestCharmUnitMode:
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
-    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
-        self,
-        patch_get_assigned_certificate,
-    ):
+    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
             remote_app_name="certificate-provider",
         )
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-                revoked=False,
-            ),
-            PrivateKey.from_string(self.private_key),
+
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+            revoked=False,
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
         certificate_secret = scenario.Secret(
             id="1",
@@ -260,11 +262,8 @@ class TestCharmUnitMode:
 
         assert state_out.unit_status == ActiveStatus("Unit certificate is available")
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
-        self, patch_get_assigned_certificate
+        self,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
@@ -311,16 +310,18 @@ class TestCharmUnitMode:
             ca=CA,
             ca_key=provider_private_key,
         )
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(new_certificate),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(new_certificate),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -344,12 +345,8 @@ class TestCharmUnitMode:
 
         assert action_output.success is False
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
-        patch_get_assigned_certificate,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
@@ -365,16 +362,17 @@ class TestCharmUnitMode:
             remote_app_name="certificate-provider",
         )
 
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_in = scenario.State(
@@ -432,6 +430,14 @@ class TestCharmUnitMode:
 
 
 class TestCharmAppMode:
+    patcher_tls_requires = patch(
+        "charm.TLSCertificatesRequiresV4", autospec=TLSCertificatesRequiresV4
+    )
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start().return_value
+
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
         self.private_key = generate_private_key()
@@ -545,12 +551,8 @@ class TestCharmAppMode:
 
         assert state_out.unit_status == ActiveStatus("Waiting for app certificate")
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
-        patch_get_assigned_certificate,
     ):
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -558,16 +560,18 @@ class TestCharmAppMode:
             remote_app_name="certificate-provider",
         )
 
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_in = scenario.State(
@@ -591,28 +595,24 @@ class TestCharmAppMode:
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
-    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(
-        self,
-        patch_get_assigned_certificate,
-    ):
+    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
             remote_app_name="certificate-provider",
         )
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_in = scenario.State(
@@ -633,11 +633,8 @@ class TestCharmAppMode:
 
         assert state_out.unit_status == ActiveStatus("App certificate is available")
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
-        self, patch_get_assigned_certificate
+        self,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
@@ -684,16 +681,18 @@ class TestCharmAppMode:
             ca=CA,
             ca_key=provider_private_key,
         )
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(new_certificate),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(new_certificate),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -717,12 +716,8 @@ class TestCharmAppMode:
 
         assert action_output.success is False
 
-    @patch(
-        "charms.tls_certificates_interface.v4.tls_certificates.TLSCertificatesRequiresV4.get_assigned_certificate"  # noqa: E501, W505
-    )
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
-        patch_get_assigned_certificate,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
@@ -738,16 +733,18 @@ class TestCharmAppMode:
             remote_app_name="certificate-provider",
         )
 
-        patch_get_assigned_certificate.return_value = (
-            ProviderCertificate(
-                relation_id=certificates_relation.relation_id,
-                certificate=Certificate.from_string(CERTIFICATE),
-                ca=Certificate.from_string(CA),
-                chain=[Certificate.from_string(CA)],
-                revoked=False,
-                certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-            ),
-            PrivateKey.from_string(self.private_key),
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_in = scenario.State(
