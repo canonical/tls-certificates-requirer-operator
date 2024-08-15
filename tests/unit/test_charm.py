@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import scenario
 from charm import TLSRequirerCharm
-from ops.model import ActiveStatus
+from ops.model import ActiveStatus, BlockedStatus
 from tls import generate_ca, generate_certificate, generate_csr, generate_private_key
 
 from lib.charms.tls_certificates_interface.v4.tls_certificates import (
@@ -47,6 +47,34 @@ CERTIFICATE = generate_certificate(
 )
 
 
+class TestCharmInvalidMode:
+    @pytest.fixture(autouse=True)
+    def context(self):
+        self.ctx = scenario.Context(
+            charm_type=TLSRequirerCharm,
+        )
+
+    def test_given_invalid_mode_when_evaluate_status_then_status_is_blocked(self):
+        state_in = scenario.State(
+            config={
+                "mode": "whatever",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Invalid configuration: Invalid mode configuration: only 'unit' and 'app' are allowed"
+        )
+
+
 class TestCharmUnitMode:
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -71,17 +99,51 @@ class TestCharmUnitMode:
             charm_type=TLSRequirerCharm,
         )
 
+    def test_given_more_than_1_certificate_request_and_common_name_set_in_config_when_evaluate_status_then_status_is_blocked(  # noqa: E501
+        self,
+    ):
+        state_in = scenario.State(
+            config={
+                "num_certificates": 3,
+                "mode": "unit",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Invalid configuration: Common name can't be set when requesting multiple certificates"
+        )
+
+    def test_given_missing_certificates_relation_when_evaluate_status_then_status_is_active(self):
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[],
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == ActiveStatus("Waiting for certificates relation")
+
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
     ):
-        csr_secret = scenario.Secret(
-            id="1",
-            contents={0: {"csr": self.csr}},
-            owner="unit",
-            revision=0,
-            label="csr-0",
-        )
-
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
@@ -99,7 +161,6 @@ class TestCharmUnitMode:
                 "locality_name": LOCALITY_NAME,
             },
             relations=[certificates_relation],
-            secrets=[csr_secret],
         )
 
         state_out = self.ctx.run(event="collect_unit_status", state=state_in)
@@ -146,7 +207,7 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[0].label == f"tls-certificates-requirer-0.{state_in.model.name}"
+        assert state_out.secrets[0].label == f"tls-certificates-requirer-0-0.{state_in.model.name}"
         assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
@@ -211,7 +272,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"tls-certificates-requirer-0-0.{model_name}",
         )
 
         certificates_relation = scenario.Relation(
@@ -296,7 +357,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"tls-certificates-requirer-0-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -330,9 +391,13 @@ class TestCharmUnitMode:
 
         assert action_output.success is True
         assert action_output.results == {
-            "certificate": CERTIFICATE,
-            "ca-certificate": CA,
-            "csr": self.csr,
+            "certificates": [
+                {
+                    "certificate": CERTIFICATE,
+                    "ca-certificate": CA,
+                    "csr": self.csr,
+                }
+            ]
         }
 
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
@@ -344,7 +409,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"tls-certificates-requirer-0-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -388,6 +453,69 @@ class TestCharmAppMode:
     def context(self):
         self.ctx = scenario.Context(
             charm_type=TLSRequirerCharm,
+        )
+
+    def test_given_more_than_1_certificate_request_and_common_name_set_in_config_when_evaluate_status_then_status_is_blocked(  # noqa: E501
+        self,
+    ):
+        state_in = scenario.State(
+            config={
+                "num_certificates": 3,
+                "mode": "app",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Invalid configuration: Common name can't be set when requesting multiple certificates"
+        )
+
+    def test_given_missing_certificates_relation_when_evaluate_status_then_status_is_active(self):
+        state_in = scenario.State(
+            config={
+                "mode": "app",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            leader=True,
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == ActiveStatus("Waiting for certificates relation")
+
+    def test_given_unit_is_non_leader_when_evaluate_status_then_status_is_blocked(self):
+        state_in = scenario.State(
+            config={
+                "mode": "app",
+                "common_name": COMMON_NAME,
+                "sans_dns": COMMON_NAME,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            leader=False,
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "This charm can't scale when deployed in app mode"
         )
 
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
@@ -458,7 +586,7 @@ class TestCharmAppMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[0].label == f"tls-certificates-requirer.{state_in.model.name}"
+        assert state_out.secrets[0].label == f"tls-certificates-requirer-0.{state_in.model.name}"
         assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
@@ -517,7 +645,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer.{model_name}",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -602,7 +730,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer.{model_name}",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -636,9 +764,13 @@ class TestCharmAppMode:
 
         assert action_output.success is True
         assert action_output.results == {
-            "certificate": CERTIFICATE,
-            "ca-certificate": CA,
-            "csr": self.csr,
+            "certificates": [
+                {
+                    "certificate": CERTIFICATE,
+                    "ca-certificate": CA,
+                    "csr": self.csr,
+                }
+            ]
         }
 
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
@@ -650,7 +782,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer.{model_name}",
+            label=f"tls-certificates-requirer-0.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",

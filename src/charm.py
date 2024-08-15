@@ -5,7 +5,7 @@
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
 import logging
-from typing import FrozenSet, List, Optional
+from typing import FrozenSet, List, Optional, Tuple
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequest,
@@ -71,10 +71,9 @@ class TLSRequirerCharm(CharmBase):
 
     def _on_collect_status(self, event: CollectStatusEvent) -> None:
         """Collect status for the charm."""
-        if not self._mode_config_is_valid():
-            event.add_status(
-                BlockedStatus("Invalid mode configuration: only 'unit' and 'app' are allowed")
-            )
+        is_valid, msg = self._config_is_valid()
+        if not is_valid:
+            event.add_status(BlockedStatus(f"Invalid configuration: {msg}"))
             return
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
@@ -90,10 +89,9 @@ class TLSRequirerCharm(CharmBase):
         """Collect status for the unit mode."""
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        if not self._certificate_is_stored(
-            certificate_request=self._get_certificate_requests()[0]
-        ):
-            return ActiveStatus("Waiting for unit certificate")
+        for certificate_request in self._get_certificate_requests():
+            if not self._certificate_is_stored(certificate_request=certificate_request):
+                return ActiveStatus("Waiting for unit certificate")
         return ActiveStatus("Unit certificate is available")
 
     def _collect_status_app_mode(self) -> StatusBase:
@@ -102,25 +100,26 @@ class TLSRequirerCharm(CharmBase):
             return BlockedStatus("This charm can't scale when deployed in app mode")
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        if not self._certificate_is_stored(
-            certificate_request=self._get_certificate_requests()[0]
-        ):
-            return ActiveStatus("Waiting for app certificate")
+        for certificate_request in self._get_certificate_requests():
+            if not self._certificate_is_stored(certificate_request=certificate_request):
+                return ActiveStatus("Waiting for app certificate")
         return ActiveStatus("App certificate is available")
 
     def _configure(self, event: EventBase) -> None:
         """Manage certificate lifecycle."""
-        mode = self._get_config_mode()
-        if not self._mode_config_is_valid():
-            logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
+        is_valid, msg = self._config_is_valid()
+        if not is_valid:
+            logger.error("Invalid configuration: %s", msg)
             return
+        mode = self._get_config_mode()
+        assert mode
         if not self._certificates_relation_created:
             return
         if mode == Mode.APP and not self.unit.is_leader():
             return
-        certificate_request = self._get_certificate_requests()[0]
-        if not self._certificate_is_stored(certificate_request=certificate_request):
-            self._store_certificate(mode=Mode.UNIT, certificate_request=certificate_request)
+        for certificate_request in self._get_certificate_requests():
+            if not self._certificate_is_stored(certificate_request=certificate_request):
+                self._store_certificate(mode=mode, certificate_request=certificate_request)
 
     def _on_certificates_relation_broken(self, event: RelationBrokenEvent) -> None:
         """Remove Certificate from juju secret.
@@ -128,30 +127,31 @@ class TLSRequirerCharm(CharmBase):
         Args:
             event: Juju event.
         """
-        certificate_request = self._get_certificate_requests()[0]
-        if self._certificate_secret_exists(certificate_request=certificate_request):
-            try:
-                certificate_secret = self.model.get_secret(
-                    label=self._get_certificate_secret_label(
-                        certificate_request=certificate_request
+        for certificate_request in self._get_certificate_requests():
+            if self._certificate_secret_exists(certificate_request=certificate_request):
+                try:
+                    certificate_secret = self.model.get_secret(
+                        label=self._get_certificate_secret_label(
+                            certificate_request=certificate_request
+                        )
                     )
-                )
-            except (SecretNotFoundError, ModelError):
-                logger.warning("Unable to retrieve unit certificate secret")
-                return
-            certificate_secret.remove_all_revisions()
+                except (SecretNotFoundError, ModelError):
+                    logger.warning("Unable to retrieve unit certificate secret")
+                    return
+                certificate_secret.remove_all_revisions()
 
     def _get_certificate_requests(self) -> List[CertificateRequest]:
         return [
             CertificateRequest(
-                common_name=self._get_common_name(),
-                sans_dns=self._get_sans_dns(),
+                common_name=self._get_common_name(i),
+                sans_dns=self._get_sans_dns(i),
                 organization=self._get_config_organization_name(),
                 email_address=self._get_config_email_address(),
                 country_name=self._get_config_country_name(),
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
             )
+            for i in range(self._get_config_num_certificates())
         ]
 
     def _certificate_is_stored(self, certificate_request: CertificateRequest) -> bool:
@@ -216,7 +216,7 @@ class TLSRequirerCharm(CharmBase):
         """Return common name from the configuration."""
         return self._get_str_config("common_name")
 
-    def _get_common_name(self) -> str:
+    def _get_common_name(self, certificate_number: int) -> str:
         """Return common name.
 
         If `common_name` config option is set, it will be used as a common name.
@@ -227,17 +227,28 @@ class TLSRequirerCharm(CharmBase):
             return config_common_name
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return f"{self.app.name}-{self._get_unit_number()}.{self.model.name}"
+            return (
+                f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
+            )
         elif mode == Mode.APP:
-            return f"{self.app.name}.{self.model.name}"
+            return f"{self.app.name}-{certificate_number}.{self.model.name}"
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
-    def _mode_config_is_valid(self) -> bool:
-        """Return whether mode configuration is valid."""
+    def _config_is_valid(self) -> Tuple[bool, str]:
+        """Return whether the configuration is valid."""
+        if self._get_config_num_certificates() > 1 and self._get_config_common_name():
+            return False, "Common name can't be set when requesting multiple certificates"
         config_mode = self._get_config_mode()
         if config_mode not in [Mode.UNIT, Mode.APP]:
-            return False
-        return True
+            return False, "Invalid mode configuration: only 'unit' and 'app' are allowed"
+        return True, ""
+
+    def _get_config_num_certificates(self) -> int:
+        """Return the number of certificates to request."""
+        num_certificates = self.model.config.get("num_certificates", 1)
+        if not isinstance(num_certificates, int):
+            return 1
+        return num_certificates
 
     def _get_config_mode(self) -> Optional[Mode]:
         """Return mode from the configuration."""
@@ -250,7 +261,7 @@ class TLSRequirerCharm(CharmBase):
             return None
         return modes.get(mode, None)
 
-    def _get_sans_dns(self) -> FrozenSet[str]:
+    def _get_sans_dns(self, certificate_number: int) -> FrozenSet[str]:
         """Return DNS Subject Alternative Names.
 
         If `sans_dns` config option is set, it will be used as a list of DNS
@@ -262,9 +273,13 @@ class TLSRequirerCharm(CharmBase):
             return frozenset(config_sans_dns.split(","))
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return frozenset(["{self.app.name}-{self._get_unit_number()}.{self.model.name}"])
+            return frozenset(
+                [
+                    f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
+                ]
+            )
         elif mode == Mode.APP:
-            return frozenset([f"{self.app.name}.{self.model.name}"])
+            return frozenset([f"{self.app.name}-{certificate_number}.{self.model.name}"])
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _get_config_organization_name(self) -> Optional[str]:
@@ -313,24 +328,29 @@ class TLSRequirerCharm(CharmBase):
         Args:
             event: Juju event
         """
-        if not self._mode_config_is_valid():
-            event.fail("Invalid mode configuration: only 'unit' and 'app' are allowed")
+        is_valid, msg = self._config_is_valid()
+        if not is_valid:
+            event.fail(f"Invalid configuration: {msg}")
             return
-        certificate_request = self._get_certificate_requests()[0]
-        if self._certificate_is_stored(certificate_request=certificate_request):
-            secret = self.model.get_secret(
-                label=self._get_certificate_secret_label(certificate_request=certificate_request)
-            )
-            content = secret.get_content(refresh=True)
-            event.set_results(
-                {
-                    "certificate": content["certificate"],
-                    "ca-certificate": content["ca-certificate"],
-                    "csr": content["csr"],
-                }
-            )
-        else:
-            event.fail("Certificate not available")
+        certificates = []
+        for certificate_request in self._get_certificate_requests():
+            if self._certificate_is_stored(certificate_request=certificate_request):
+                secret = self.model.get_secret(
+                    label=self._get_certificate_secret_label(
+                        certificate_request=certificate_request
+                    )
+                )
+                content = secret.get_content(refresh=True)
+                certificates.append(
+                    {
+                        "certificate": content["certificate"],
+                        "ca-certificate": content["ca-certificate"],
+                        "csr": content["csr"],
+                    }
+                )
+            else:
+                event.fail("Certificate not available")
+        event.set_results({"certificates": certificates})
 
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]

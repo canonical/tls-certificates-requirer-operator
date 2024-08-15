@@ -51,6 +51,13 @@ requires:
 config:
   options:
 
+    num_certificates:
+      type: int
+      default: 1
+      description: |
+        Number of certificates to request.
+        If the mode is set to `unit`, each unit will request this number of certificates.
+
     mode:
       type: string
       default: "unit"
@@ -63,6 +70,7 @@ config:
     common_name:
       type: string
       description: |
+        This configuration option should not be set when `num_certificates` is greater than 1.
         Common name to be used in the certificate.
         If set, only the leader unit will request the certificate with this common name.
         Other units will not request certificates.
