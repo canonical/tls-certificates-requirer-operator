@@ -4,6 +4,7 @@
 
 """Charm that requests X.509 certificates using the tls-certificates interface."""
 
+import json
 import logging
 from typing import FrozenSet, List, Optional, Tuple
 
@@ -145,7 +146,14 @@ class TLSRequirerCharm(CharmBase):
                         certificate_request.common_name,
                     )
                     return
-                certificate_secret.remove_all_revisions()
+                try:
+                    certificate_secret.remove_all_revisions()
+                except SecretNotFoundError:
+                    logger.warning(
+                        "Unable to remove certificate secret: %s",
+                        certificate_request.common_name,
+                    )
+                    return
 
     def _get_certificate_requests(self) -> List[CertificateRequest]:
         return [
@@ -357,7 +365,7 @@ class TLSRequirerCharm(CharmBase):
                 )
             else:
                 event.fail(f"Certificate not available: {certificate_request.common_name}")
-        event.set_results({"certificates": certificates})
+        event.set_results({"certificates": json.dumps(certificates)})
 
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]

@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -20,7 +21,7 @@ SELF_SIGNED_CERTIFICATES_CHARM_NAME = "self-signed-certificates"
 NUM_UNITS = 3
 
 
-async def wait_for_certificate_available(
+async def wait_for_certificates_available(
     ops_test: OpsTest,
     unit_name: str,
     email_address: Optional[str] = None,
@@ -28,10 +29,10 @@ async def wait_for_certificate_available(
     country_name: Optional[str] = None,
     state_or_province_name: Optional[str] = None,
     locality_name: Optional[str] = None,
-) -> str:
-    """Run the `get-certificate` action until it returns a certificate.
+):
+    """Run the `get-certificate` action until it returns certificates.
 
-    If the action does not return a certificate within 60 seconds, a TimeoutError is raised.
+    If the action does not return certificates within 60 seconds, a TimeoutError is raised.
     """
     assert ops_test.model
     start_time = time.time()
@@ -47,23 +48,29 @@ async def wait_for_certificate_available(
             logger.info("Action failed")
             time.sleep(1)
             continue
-        certificate = action_output.get("certificate", None)
-        if not certificate:
-            logger.info("Certificate is empty")
+        certificates = action_output.get("certificates", None)
+        if not certificates:
+            logger.info("Certificates are not available")
             time.sleep(1)
             continue
-        cert_obj = Certificate(certificate)
-        if not cert_obj.has_attributes(
-            email_address=email_address,
-            organization_name=organization_name,
-            country_name=country_name,
-            state_or_province_name=state_or_province_name,
-            locality_name=locality_name,
-        ):
-            logger.info("Certificate does not have the expected attributes")
-            time.sleep(1)
-            continue
-        return certificate
+        print(certificates)
+        certificate_list = json.loads(certificates)
+        print(certificate_list)
+        print(type(certificate_list))
+
+        certs_obj = [Certificate(certificate["certificate"]) for certificate in certificate_list]
+        for cert_obj in certs_obj:
+            if not cert_obj.has_attributes(
+                email_address=email_address,
+                organization_name=organization_name,
+                country_name=country_name,
+                state_or_province_name=state_or_province_name,
+                locality_name=locality_name,
+            ):
+                logger.info("Certificate does not have the expected attributes")
+                time.sleep(1)
+                continue
+        return
     raise TimeoutError("Timed out waiting for certificate")
 
 
@@ -128,7 +135,7 @@ class TestTLSRequirerUnitMode:
             wait_for_exact_units=NUM_UNITS,
         )
 
-    async def test_given_self_signed_certificates_deployed_when_integrate_then_status_is_active(  # noqa: E501
+    async def test_given_self_signed_certificates_deployed_when_integrate_then_status_is_active(
         self,
         ops_test: OpsTest,
         deploy,
@@ -155,7 +162,7 @@ class TestTLSRequirerUnitMode:
         deploy,
     ):
         for unit in range(NUM_UNITS):
-            await wait_for_certificate_available(
+            await wait_for_certificates_available(
                 ops_test=ops_test,
                 unit_name=f"{self.APP_NAME}/{unit}",
                 email_address=None,
@@ -188,7 +195,7 @@ class TestTLSRequirerUnitMode:
         )
 
         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
-        await wait_for_certificate_available(
+        await wait_for_certificates_available(
             ops_test=ops_test,
             unit_name=leader_unit.name,
             email_address="pizza@canonical.com",
@@ -276,7 +283,7 @@ class TestTLSRequirerAppMode:
         deploy,
     ):
         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
-        await wait_for_certificate_available(
+        await wait_for_certificates_available(
             ops_test=ops_test,
             unit_name=leader_unit.name,
             email_address=None,
@@ -309,7 +316,7 @@ class TestTLSRequirerAppMode:
 
         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
 
-        await wait_for_certificate_available(
+        await wait_for_certificates_available(
             ops_test=ops_test,
             unit_name=leader_unit.name,
             email_address="ubuntu@pizza.com",

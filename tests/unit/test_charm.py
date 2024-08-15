@@ -1,6 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -436,13 +437,15 @@ class TestCharmUnitMode:
 
         assert action_output.success is True
         assert action_output.results == {
-            "certificates": [
-                {
-                    "certificate": CERTIFICATE,
-                    "ca-certificate": CA,
-                    "csr": self.csr,
-                }
-            ]
+            "certificates": json.dumps(
+                [
+                    {
+                        "certificate": CERTIFICATE,
+                        "ca-certificate": CA,
+                        "csr": self.csr,
+                    }
+                ]
+            )
         }
 
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
@@ -888,13 +891,15 @@ class TestCharmAppMode:
 
         assert action_output.success is True
         assert action_output.results == {
-            "certificates": [
-                {
-                    "certificate": CERTIFICATE,
-                    "ca-certificate": CA,
-                    "csr": self.csr,
-                }
-            ]
+            "certificates": json.dumps(
+                [
+                    {
+                        "certificate": CERTIFICATE,
+                        "ca-certificate": CA,
+                        "csr": self.csr,
+                    }
+                ]
+            )
         }
 
     def test_given_certificate_is_stored_when_on_certificates_relation_broken_then_certificate_secret_is_removed(  # noqa: E501
