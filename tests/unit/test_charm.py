@@ -83,7 +83,7 @@ class TestCharmUnitMode:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start().return_value
+        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start()
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -194,9 +194,11 @@ class TestCharmUnitMode:
             revoked=False,
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
+
         certificate_secret = scenario.Secret(
             id="1",
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
@@ -222,6 +224,47 @@ class TestCharmUnitMode:
 
         assert state_out.unit_status == ActiveStatus("All unit certificates are available")
 
+    def test_given_2_certificate_requests_when_update_status_then_2_certificates_with_appropriate_common_names_are_requested(  # noqa: E501
+        self,
+    ):
+        model_name = "abc"
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            model=scenario.Model(name=model_name),
+            config={
+                "mode": "unit",
+                "num_certificates": 2,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[certificates_relation],
+        )
+
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
+
+        self.ctx.run(event="update_status", state=state_in)
+
+        instance_calls = self.mock_tls_requires.call_args_list
+        assert len(instance_calls) == 1
+        _, kwargs = instance_calls[0]
+        certificate_requests = kwargs["certificate_requests"]
+        assert certificate_requests[0].common_name == f"tls-certificates-requirer-0-0.{model_name}"
+        assert certificate_requests[0].sans_dns == frozenset(
+            {f"tls-certificates-requirer-0-0.{model_name}"}
+        )
+        assert certificate_requests[1].common_name == f"tls-certificates-requirer-0-1.{model_name}"
+        assert certificate_requests[1].sans_dns == frozenset(
+            {f"tls-certificates-requirer-0-1.{model_name}"}
+        )
+
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
     ):
@@ -241,7 +284,6 @@ class TestCharmUnitMode:
                 "locality_name": LOCALITY_NAME,
             },
             relations=[certificates_relation],
-            secrets=[],
         )
 
         provider_certificate = ProviderCertificate(
@@ -253,8 +295,9 @@ class TestCharmUnitMode:
             certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -322,8 +365,9 @@ class TestCharmUnitMode:
             certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -373,8 +417,9 @@ class TestCharmUnitMode:
             certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_in = scenario.State(
@@ -438,7 +483,7 @@ class TestCharmAppMode:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start().return_value
+        self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start()
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -573,8 +618,9 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_in = scenario.State(
@@ -595,6 +641,78 @@ class TestCharmAppMode:
 
         assert state_out.unit_status == ActiveStatus("All app certificates are available")
 
+    def test_given_non_leader_when_update_status_then_no_certificate_is_requested(self):
+        model_name = "abc"
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            model=scenario.Model(name=model_name),
+            config={
+                "mode": "app",
+                "num_certificates": 2,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[certificates_relation],
+            leader=False,
+        )
+
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
+
+        self.ctx.run(event="update_status", state=state_in)
+
+        instance_calls = self.mock_tls_requires.call_args_list
+        assert len(instance_calls) == 0
+
+    def test_given_2_certificate_requests_when_update_status_then_2_certificates_with_appropriate_common_names_are_requested(  # noqa: E501
+        self,
+    ):
+        model_name = "abc"
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            model=scenario.Model(name=model_name),
+            config={
+                "mode": "app",
+                "num_certificates": 2,
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[certificates_relation],
+            leader=True,
+        )
+
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
+
+        self.ctx.run(event="update_status", state=state_in)
+
+        instance_calls = self.mock_tls_requires.call_args_list
+        assert len(instance_calls) == 1
+        _, kwargs = instance_calls[0]
+        certificate_requests = kwargs["certificate_requests"]
+        assert certificate_requests[0].common_name == f"tls-certificates-requirer-0.{model_name}"
+        assert certificate_requests[0].sans_dns == frozenset(
+            {f"tls-certificates-requirer-0.{model_name}"}
+        )
+        assert certificate_requests[1].common_name == f"tls-certificates-requirer-1.{model_name}"
+        assert certificate_requests[1].sans_dns == frozenset(
+            {f"tls-certificates-requirer-1.{model_name}"}
+        )
+
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
     ):
@@ -614,8 +732,9 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_in = scenario.State(
@@ -697,8 +816,9 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_out = self.ctx.run(event="update_status", state=state_in)
@@ -749,8 +869,9 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
+            provider_certificate,
+            private_key,
         )
 
         state_in = scenario.State(
