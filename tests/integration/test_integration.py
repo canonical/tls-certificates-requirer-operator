@@ -53,11 +53,7 @@ async def wait_for_certificates_available(
             logger.info("Certificates are not available")
             time.sleep(1)
             continue
-        print(certificates)
         certificate_list = json.loads(certificates)
-        print(certificate_list)
-        print(type(certificate_list))
-
         certs_obj = [Certificate(certificate["certificate"]) for certificate in certificate_list]
         for cert_obj in certs_obj:
             if not cert_obj.has_attributes(
