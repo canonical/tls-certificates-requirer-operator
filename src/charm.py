@@ -212,10 +212,12 @@ class TLSRequirerCharm(CharmBase):
                         certificate_request=certificate_request
                     ),
                 )
-            logger.info("New certificate is stored: %s", str(assigned_certificate.certificate))
+            logger.info(
+                "New certificate is stored: %s", assigned_certificate.certificate.common_name
+            )
             return
         certificate_secret.set_content(content=certificate_secret_content)
-        logger.info("Certificate is updated: %s", str(assigned_certificate.certificate))
+        logger.info("Certificate is updated: %s", assigned_certificate.certificate.common_name)
 
     def _get_config_common_name(self) -> Optional[str]:
         """Return common name from the configuration."""
