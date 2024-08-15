@@ -91,8 +91,10 @@ class TLSRequirerCharm(CharmBase):
             return ActiveStatus("Waiting for certificates relation")
         for certificate_request in self._get_certificate_requests():
             if not self._certificate_is_stored(certificate_request=certificate_request):
-                return ActiveStatus("Waiting for unit certificate")
-        return ActiveStatus("Unit certificate is available")
+                return ActiveStatus(
+                    f"Waiting for unit certificate: {certificate_request.common_name}"
+                )
+        return ActiveStatus("All unit certificates are available")
 
     def _collect_status_app_mode(self) -> StatusBase:
         """Collect status for the app mode."""
@@ -102,8 +104,10 @@ class TLSRequirerCharm(CharmBase):
             return ActiveStatus("Waiting for certificates relation")
         for certificate_request in self._get_certificate_requests():
             if not self._certificate_is_stored(certificate_request=certificate_request):
-                return ActiveStatus("Waiting for app certificate")
-        return ActiveStatus("App certificate is available")
+                return ActiveStatus(
+                    f"Waiting for app certificate: {certificate_request.common_name}"
+                )
+        return ActiveStatus("All app certificates are available")
 
     def _configure(self, event: EventBase) -> None:
         """Manage certificate lifecycle."""
@@ -136,7 +140,10 @@ class TLSRequirerCharm(CharmBase):
                         )
                     )
                 except (SecretNotFoundError, ModelError):
-                    logger.warning("Unable to retrieve unit certificate secret")
+                    logger.warning(
+                        "Unable to retrieve certificate secret: %s",
+                        certificate_request.common_name,
+                    )
                     return
                 certificate_secret.remove_all_revisions()
 
@@ -174,12 +181,12 @@ class TLSRequirerCharm(CharmBase):
         return str(assigned_certificate.certificate) == stored_certificate
 
     def _store_certificate(self, mode: Mode, certificate_request: CertificateRequest) -> None:
-        """Store the assigned unit certificate in a Juju secret."""
+        """Store the assigned certificate in a Juju secret."""
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
             certificate_request=certificate_request
         )
         if not assigned_certificate:
-            logger.info("No unit certificate is assigned")
+            logger.info("No certificate is assigned")
             return
         certificate_secret_content = {
             "certificate": str(assigned_certificate.certificate),
@@ -205,12 +212,10 @@ class TLSRequirerCharm(CharmBase):
                         certificate_request=certificate_request
                     ),
                 )
-            logger.info(
-                "New unit certificate is stored: %s", str(assigned_certificate.certificate)
-            )
+            logger.info("New certificate is stored: %s", str(assigned_certificate.certificate))
             return
         certificate_secret.set_content(content=certificate_secret_content)
-        logger.info("Unit certificate is updated: %s", str(assigned_certificate.certificate))
+        logger.info("Certificate is updated: %s", str(assigned_certificate.certificate))
 
     def _get_config_common_name(self) -> Optional[str]:
         """Return common name from the configuration."""
@@ -349,7 +354,7 @@ class TLSRequirerCharm(CharmBase):
                     }
                 )
             else:
-                event.fail("Certificate not available")
+                event.fail(f"Certificate not available: {certificate_request.common_name}")
         event.set_results({"certificates": certificates})
 
     def _get_unit_number(self) -> str:

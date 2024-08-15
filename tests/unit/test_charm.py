@@ -153,16 +153,16 @@ class TestCharmUnitMode:
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
     ):
+        model_name = "abc"
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
             remote_app_name="certificate-provider",
         )
         state_in = scenario.State(
+            model=scenario.Model(name=model_name),
             config={
                 "mode": "unit",
-                "common_name": COMMON_NAME,
-                "sans_dns": COMMON_NAME,
                 "organization_name": ORGANIZATION_NAME,
                 "email_address": EMAIL_ADDRESS,
                 "country_name": COUNTRY_NAME,
@@ -174,49 +174,9 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="collect_unit_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus("Waiting for unit certificate")
-
-    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
-        self,
-    ):
-        certificates_relation = scenario.Relation(
-            endpoint="certificates",
-            interface="tls-certificates",
-            remote_app_name="certificate-provider",
+        assert state_out.unit_status == ActiveStatus(
+            f"Waiting for unit certificate: tls-certificates-requirer-0-0.{model_name}"
         )
-
-        state_in = scenario.State(
-            config={
-                "mode": "unit",
-                "organization_name": ORGANIZATION_NAME,
-                "email_address": EMAIL_ADDRESS,
-                "country_name": COUNTRY_NAME,
-                "state_or_province_name": STATE_OR_PROVINCE_NAME,
-                "locality_name": LOCALITY_NAME,
-            },
-            relations=[certificates_relation],
-            secrets=[],
-        )
-
-        provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
-            certificate=Certificate.from_string(CERTIFICATE),
-            ca=Certificate.from_string(CA),
-            chain=[Certificate.from_string(CA)],
-            revoked=False,
-            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-        )
-        private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
-        )
-
-        state_out = self.ctx.run(event="update_status", state=state_in)
-
-        assert state_out.secrets[0].label == f"tls-certificates-requirer-0-0.{state_in.model.name}"
-        assert state_out.secrets[0].contents == {
-            0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
-        }
 
     def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
         certificates_relation = scenario.Relation(
@@ -260,7 +220,49 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus("Unit certificate is available")
+        assert state_out.unit_status == ActiveStatus("All unit certificates are available")
+
+    def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
+        self,
+    ):
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[certificates_relation],
+            secrets=[],
+        )
+
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
+        )
+
+        state_out = self.ctx.run(event="update_status", state=state_in)
+
+        assert state_out.secrets[0].label == f"tls-certificates-requirer-0-0.{state_in.model.name}"
+        assert state_out.secrets[0].contents == {
+            0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
+        }
 
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self,
@@ -527,10 +529,52 @@ class TestCharmAppMode:
     def test_given_certificate_request_is_made_when_evaluate_status_then_status_is_active(
         self,
     ):
+        model_name = "abc"
         certificates_relation = scenario.Relation(
             endpoint="certificates",
             interface="tls-certificates",
             remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            model=scenario.Model(name=model_name),
+            config={
+                "mode": "app",
+                "organization_name": ORGANIZATION_NAME,
+                "email_address": EMAIL_ADDRESS,
+                "country_name": COUNTRY_NAME,
+                "state_or_province_name": STATE_OR_PROVINCE_NAME,
+                "locality_name": LOCALITY_NAME,
+            },
+            relations=[certificates_relation],
+            leader=True,
+            secrets=[],
+        )
+
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+
+        assert state_out.unit_status == ActiveStatus(
+            f"Waiting for app certificate: tls-certificates-requirer-0.{model_name}"
+        )
+
+    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+        provider_certificate = ProviderCertificate(
+            relation_id=certificates_relation.relation_id,
+            certificate=Certificate.from_string(CERTIFICATE),
+            ca=Certificate.from_string(CA),
+            chain=[Certificate.from_string(CA)],
+            revoked=False,
+            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
+        )
+        private_key = PrivateKey.from_string(self.private_key)
+
+        self.mock_tls_requires.configure_mock(
+            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
         )
 
         state_in = scenario.State(
@@ -547,9 +591,9 @@ class TestCharmAppMode:
             secrets=[],
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus("Waiting for app certificate")
+        assert state_out.unit_status == ActiveStatus("All app certificates are available")
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
@@ -594,44 +638,6 @@ class TestCharmAppMode:
         assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
-
-    def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
-        certificates_relation = scenario.Relation(
-            endpoint="certificates",
-            interface="tls-certificates",
-            remote_app_name="certificate-provider",
-        )
-        provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
-            certificate=Certificate.from_string(CERTIFICATE),
-            ca=Certificate.from_string(CA),
-            chain=[Certificate.from_string(CA)],
-            revoked=False,
-            certificate_signing_request=CertificateSigningRequest.from_string(self.csr),
-        )
-        private_key = PrivateKey.from_string(self.private_key)
-
-        self.mock_tls_requires.configure_mock(
-            **{"get_assigned_certificate.return_value": (provider_certificate, private_key)},
-        )
-
-        state_in = scenario.State(
-            config={
-                "mode": "app",
-                "organization_name": ORGANIZATION_NAME,
-                "email_address": EMAIL_ADDRESS,
-                "country_name": COUNTRY_NAME,
-                "state_or_province_name": STATE_OR_PROVINCE_NAME,
-                "locality_name": LOCALITY_NAME,
-            },
-            relations=[certificates_relation],
-            leader=True,
-            secrets=[],
-        )
-
-        state_out = self.ctx.run(event="update_status", state=state_in)
-
-        assert state_out.unit_status == ActiveStatus("App certificate is available")
 
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
         self,
