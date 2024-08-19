@@ -232,18 +232,18 @@ class TLSRequirerCharm(CharmBase):
         """Return common name.
 
         If `common_name` config option is set, it will be used as a common name.
-        Otherwise, the common name will be generated based on the application name and unit number.
+        Otherwise, the common name will be generated based on the application name and unit number:
+        - `unit`: `cert-<certificate number>.unit-<unit number>.<app name>.<model name>`
+        - `app`: `cert-<certificate number>.<app name>.<model name>`
         """
         config_common_name = self._get_config_common_name()
         if config_common_name:
             return config_common_name
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
-            return (
-                f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
-            )
+            return f"cert-{certificate_number}.unit-{self._get_unit_number()}.{self.app.name}.{self.model.name}"  # noqa: E501
         elif mode == Mode.APP:
-            return f"{self.app.name}-{certificate_number}.{self.model.name}"
+            return f"cert-{certificate_number}.{self.app.name}.{self.model.name}"
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _config_is_valid(self) -> Tuple[bool, str]:
@@ -278,7 +278,9 @@ class TLSRequirerCharm(CharmBase):
 
         If `sans_dns` config option is set, it will be used as a list of DNS
         Subject Alternative Names. Otherwise, the list will contain a single
-        DNS Subject Alternative Name based on the application name and unit number.
+        DNS Subject Alternative Name based on the application name and unit number:
+        - `unit`: `cert-<certificate number>.unit-<unit number>.<app name>.<model name>`
+        - `app`: `cert-<certificate number>.<app name>.<model name>`
         """
         config_sans_dns = self.model.config.get("sans_dns", "")
         if config_sans_dns and isinstance(config_sans_dns, str):
@@ -287,11 +289,11 @@ class TLSRequirerCharm(CharmBase):
         if mode == Mode.UNIT:
             return frozenset(
                 [
-                    f"{self.app.name}-{self._get_unit_number()}-{certificate_number}.{self.model.name}"
+                    f"cert-{certificate_number}.unit-{self._get_unit_number()}.{self.app.name}.{self.model.name}"
                 ]
             )
         elif mode == Mode.APP:
-            return frozenset([f"{self.app.name}-{certificate_number}.{self.model.name}"])
+            return frozenset([f"cert-{certificate_number}.{self.app.name}.{self.model.name}"])
         raise ValueError("Invalid mode, only 'unit' and 'app' are allowed.")
 
     def _get_config_organization_name(self) -> Optional[str]:

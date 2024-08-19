@@ -75,8 +75,8 @@ config:
         If set, only the leader unit will request the certificate with this common name.
         Other units will not request certificates.
         If not set, the following value will be used (depending on the mode):
-          - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
-          - `app`: `<app name>-<certificate number>.<model name>`
+          - `unit`: `cert-<certificate number>.unit-<unit number>.<app name>.<model name>`
+          - `app`: `cert-<certificate number>.<app name>.<model name>`
 
     sans_dns:
       type: string
@@ -85,8 +85,8 @@ config:
         Other units will not request certificates.
         Comma separated list of DNS Subject Alternative Names (SAN's) to be used in the certificate.
         If not set, the following value will be used (depending on the mode):
-          - `unit`: ``<app name>-<unit number>-<certificate number>.<model name>`
-          - `app`: `<app name>-<certificate number>.<model name>`
+          - `unit`: `cert-<certificate number>.unit-<unit number>.<app name>.<model name>`
+          - `app`: `cert-<certificate number>.<app name>.<model name>`
 
     organization_name:
       type: string

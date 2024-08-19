@@ -259,13 +259,19 @@ class TestCharmUnitMode:
         assert len(instance_calls) == 1
         _, kwargs = instance_calls[0]
         certificate_requests = kwargs["certificate_requests"]
-        assert certificate_requests[0].common_name == f"tls-certificates-requirer-0-0.{model_name}"
-        assert certificate_requests[0].sans_dns == frozenset(
-            {f"tls-certificates-requirer-0-0.{model_name}"}
+        assert (
+            certificate_requests[0].common_name
+            == f"cert-0.unit-0.tls-certificates-requirer.{model_name}"
         )
-        assert certificate_requests[1].common_name == f"tls-certificates-requirer-0-1.{model_name}"
+        assert certificate_requests[0].sans_dns == frozenset(
+            {f"cert-0.unit-0.tls-certificates-requirer.{model_name}"}
+        )
+        assert (
+            certificate_requests[1].common_name
+            == f"cert-1.unit-0.tls-certificates-requirer.{model_name}"
+        )
         assert certificate_requests[1].sans_dns == frozenset(
-            {f"tls-certificates-requirer-0-1.{model_name}"}
+            {f"cert-1.unit-0.tls-certificates-requirer.{model_name}"}
         )
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
@@ -305,7 +311,10 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[0].label == f"tls-certificates-requirer-0-0.{state_in.model.name}"
+        assert (
+            state_out.secrets[0].label
+            == f"cert-0.unit-0.tls-certificates-requirer.{state_in.model.name}"
+        )
         assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
@@ -319,7 +328,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0-0.{model_name}",
+            label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
 
         certificates_relation = scenario.Relation(
@@ -403,7 +412,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0-0.{model_name}",
+            label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -459,7 +468,7 @@ class TestCharmUnitMode:
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="unit",
             revision=0,
-            label=f"tls-certificates-requirer-0-0.{model_name}",
+            label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -711,13 +720,17 @@ class TestCharmAppMode:
         assert len(instance_calls) == 1
         _, kwargs = instance_calls[0]
         certificate_requests = kwargs["certificate_requests"]
-        assert certificate_requests[0].common_name == f"tls-certificates-requirer-0.{model_name}"
-        assert certificate_requests[0].sans_dns == frozenset(
-            {f"tls-certificates-requirer-0.{model_name}"}
+        assert (
+            certificate_requests[0].common_name == f"cert-0.tls-certificates-requirer.{model_name}"
         )
-        assert certificate_requests[1].common_name == f"tls-certificates-requirer-1.{model_name}"
+        assert certificate_requests[0].sans_dns == frozenset(
+            {f"cert-0.tls-certificates-requirer.{model_name}"}
+        )
+        assert (
+            certificate_requests[1].common_name == f"cert-1.tls-certificates-requirer.{model_name}"
+        )
         assert certificate_requests[1].sans_dns == frozenset(
-            {f"tls-certificates-requirer-1.{model_name}"}
+            {f"cert-1.tls-certificates-requirer.{model_name}"}
         )
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
@@ -760,7 +773,9 @@ class TestCharmAppMode:
 
         state_out = self.ctx.run(event="update_status", state=state_in)
 
-        assert state_out.secrets[0].label == f"tls-certificates-requirer-0.{state_in.model.name}"
+        assert (
+            state_out.secrets[0].label == f"cert-0.tls-certificates-requirer.{state_in.model.name}"
+        )
         assert state_out.secrets[0].contents == {
             0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
         }
@@ -774,7 +789,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -858,7 +873,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
@@ -915,7 +930,7 @@ class TestCharmAppMode:
             contents={0: {"certificate": "whatever", "ca-certificate": CA}},
             owner="app",
             revision=0,
-            label=f"tls-certificates-requirer-0.{model_name}",
+            label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
             endpoint="certificates",
