@@ -147,7 +147,8 @@ class TLSRequirerCharm(CharmBase):
 
     def _get_certificate_fulfillment_status(self) -> str:
         """Return the status message reflecting how many certificate requests are still pending."""
-        assigned_certificates_num = len(self.certificates.get_assigned_certificates())
+        assigned_certs, _ = self.certificates.get_assigned_certificates()
+        assigned_certificates_num = len(assigned_certs)
         certificate_requests_num = len(self._get_certificate_requests())
         return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
 

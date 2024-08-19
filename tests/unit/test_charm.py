@@ -85,6 +85,10 @@ class TestCharmUnitMode:
     @pytest.fixture(autouse=True)
     def setup(self):
         self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start()
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = (
+            [],
+            None,
+        )
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -193,12 +197,10 @@ class TestCharmUnitMode:
             revoked=False,
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = [
-            (
-                provider_certificate,
-                private_key,
-            )
-        ]
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = (
+            [provider_certificate],
+            private_key,
+        )
 
         certificate_secret = scenario.Secret(
             id="1",
@@ -487,6 +489,10 @@ class TestCharmAppMode:
     @pytest.fixture(autouse=True)
     def setup(self):
         self.mock_tls_requires = TestCharmUnitMode.patcher_tls_requires.start()
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = (
+            [],
+            None,
+        )
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -619,12 +625,10 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = [
-            (
-                provider_certificate,
-                private_key,
-            )
-        ]
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = (
+            [provider_certificate],
+            private_key,
+        )
 
         state_in = scenario.State(
             config={
