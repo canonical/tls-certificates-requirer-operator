@@ -175,9 +175,7 @@ class TestCharmUnitMode:
 
         state_out = self.ctx.run(event="collect_unit_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus(
-            f"Waiting for unit certificate: tls-certificates-requirer-0-0.{model_name}"
-        )
+        assert state_out.unit_status == ActiveStatus("0/1 certificate requests are fulfilled")
 
     def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
         certificates_relation = scenario.Relation(
@@ -195,10 +193,12 @@ class TestCharmUnitMode:
             revoked=False,
         )
         private_key = PrivateKey.from_string(self.private_key)
-        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
-            provider_certificate,
-            private_key,
-        )
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = [
+            (
+                provider_certificate,
+                private_key,
+            )
+        ]
 
         certificate_secret = scenario.Secret(
             id="1",
@@ -221,9 +221,9 @@ class TestCharmUnitMode:
             secrets=[certificate_secret],
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus("All unit certificates are available")
+        assert state_out.unit_status == ActiveStatus("1/1 certificate requests are fulfilled")
 
     def test_given_2_certificate_requests_when_update_status_then_2_certificates_with_appropriate_common_names_are_requested(  # noqa: E501
         self,
@@ -601,9 +601,7 @@ class TestCharmAppMode:
 
         state_out = self.ctx.run(event="collect_unit_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus(
-            f"Waiting for app certificate: tls-certificates-requirer-0.{model_name}"
-        )
+        assert state_out.unit_status == ActiveStatus("0/1 certificate requests are fulfilled")
 
     def test_given_certificate_stored_when_on_evaluate_status_then_status_is_active(self):
         certificates_relation = scenario.Relation(
@@ -621,10 +619,12 @@ class TestCharmAppMode:
         )
         private_key = PrivateKey.from_string(self.private_key)
 
-        self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (
-            provider_certificate,
-            private_key,
-        )
+        self.mock_tls_requires.return_value.get_assigned_certificates.return_value = [
+            (
+                provider_certificate,
+                private_key,
+            )
+        ]
 
         state_in = scenario.State(
             config={
@@ -640,9 +640,9 @@ class TestCharmAppMode:
             secrets=[],
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
 
-        assert state_out.unit_status == ActiveStatus("All app certificates are available")
+        assert state_out.unit_status == ActiveStatus("1/1 certificate requests are fulfilled")
 
     def test_given_non_leader_when_update_status_then_no_certificate_is_requested(self):
         model_name = "abc"

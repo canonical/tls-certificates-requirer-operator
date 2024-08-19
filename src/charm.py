@@ -90,12 +90,7 @@ class TLSRequirerCharm(CharmBase):
         """Collect status for the unit mode."""
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        for certificate_request in self._get_certificate_requests():
-            if not self._certificate_is_stored(certificate_request=certificate_request):
-                return ActiveStatus(
-                    f"Waiting for unit certificate: {certificate_request.common_name}"
-                )
-        return ActiveStatus("All unit certificates are available")
+        return ActiveStatus(self._get_certificate_fulfillment_status())
 
     def _collect_status_app_mode(self) -> StatusBase:
         """Collect status for the app mode."""
@@ -103,12 +98,7 @@ class TLSRequirerCharm(CharmBase):
             return BlockedStatus("This charm can't scale when deployed in app mode")
         if not self._certificates_relation_created:
             return ActiveStatus("Waiting for certificates relation")
-        for certificate_request in self._get_certificate_requests():
-            if not self._certificate_is_stored(certificate_request=certificate_request):
-                return ActiveStatus(
-                    f"Waiting for app certificate: {certificate_request.common_name}"
-                )
-        return ActiveStatus("All app certificates are available")
+        return ActiveStatus(self._get_certificate_fulfillment_status())
 
     def _configure(self, event: EventBase) -> None:
         """Manage certificate lifecycle."""
@@ -154,6 +144,12 @@ class TLSRequirerCharm(CharmBase):
                         certificate_request.common_name,
                     )
                     return
+
+    def _get_certificate_fulfillment_status(self) -> str:
+        """Return the status message reflecting how many certificate requests are still pending."""
+        assigned_certificates_num = len(self.certificates.get_assigned_certificates())
+        certificate_requests_num = len(self._get_certificate_requests())
+        return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
 
     def _get_certificate_requests(self) -> List[CertificateRequest]:
         return [
