@@ -183,6 +183,7 @@ class TestTLSRequirer:
 
         await tls_requirer_app.set_config(
             {
+                "mode": "unit",
                 "organization_name": "Ubuntu",
                 "email_address": "pizza@canonical.com",
                 "country_name": "CA",
@@ -191,7 +192,6 @@ class TestTLSRequirer:
             }
         )
 
-        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
         for unit in range(NUM_UNITS):
             expected_certificate_attributes = CertificateAttributes(
                 common_name=f"cert-0.unit-{unit}.{self.APP_NAME}.{ops_test.model.name}",
@@ -203,7 +203,7 @@ class TestTLSRequirer:
             )
             await wait_for_certificate_available(
                 ops_test=ops_test,
-                unit_name=leader_unit.name,
+                unit_name=f"{self.APP_NAME}/{unit}",
                 expected_certificate_attributes=expected_certificate_attributes,
             )
 
@@ -221,17 +221,22 @@ class TestTLSRequirer:
         await tls_requirer_app.set_config(
             {
                 "mode": "app",
+                "organization_name": "Ubuntu",
+                "email_address": "pizza@canonical.com",
+                "country_name": "CA",
+                "state_or_province_name": "Quebec",
+                "locality_name": "Montreal",
             }
         )
 
         leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
         expected_certificate_attributes = CertificateAttributes(
             common_name=f"cert-0.{self.APP_NAME}.{ops_test.model.name}",
-            email_address=None,
-            organization_name="Canonical",
-            country_name="GB",
-            state_or_province_name="London",
-            locality_name="London",
+            email_address="pizza@canonical.com",
+            organization_name="Ubuntu",
+            country_name="CA",
+            state_or_province_name="Quebec",
+            locality_name="Montreal",
         )
         await wait_for_certificate_available(
             ops_test=ops_test,
