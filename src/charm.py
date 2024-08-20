@@ -138,7 +138,7 @@ class TLSRequirerCharm(CharmBase):
                     return
                 try:
                     certificate_secret.remove_all_revisions()
-                except SecretNotFoundError:
+                except (SecretNotFoundError, ModelError):
                     logger.warning(
                         "Unable to remove certificate secret: %s",
                         certificate_request.common_name,
