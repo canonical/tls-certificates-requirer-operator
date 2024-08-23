@@ -4,11 +4,22 @@
 
 
 import logging
+from dataclasses import dataclass
 from typing import Optional
 
 from cryptography import x509
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CertificateAttributes:
+    common_name: Optional[str] = None
+    email_address: Optional[str] = None
+    organization_name: Optional[str] = None
+    country_name: Optional[str] = None
+    state_or_province_name: Optional[str] = None
+    locality_name: Optional[str] = None
 
 
 class Certificate:
@@ -22,8 +33,14 @@ class Certificate:
         self.certificate = x509.load_pem_x509_certificate(self.certificate_str.encode("utf-8"))
 
     @property
-    def subject(self) -> Optional[str]:
-        return self.certificate.subject.rfc4514_string()
+    def common_name(self) -> Optional[str]:
+        try:
+            common_name = self.certificate.subject.get_attributes_for_oid(
+                x509.NameOID.COMMON_NAME
+            )[0].value
+        except IndexError:
+            return None
+        return str(common_name)
 
     @property
     def organization_name(self) -> Optional[str]:
@@ -77,38 +94,49 @@ class Certificate:
 
     def has_attributes(
         self,
-        email_address: Optional[str] = None,
-        organization_name: Optional[str] = None,
-        country_name: Optional[str] = None,
-        state_or_province_name: Optional[str] = None,
-        locality_name: Optional[str] = None,
+        certificate_attributes: CertificateAttributes,
     ) -> bool:
         """Return True if the certificate has the expected attributes."""
-        if self.organization_name != organization_name:
+        if self.common_name != certificate_attributes.common_name:
+            logger.info(
+                "Common name does not match: %s != %s",
+                self.common_name,
+                certificate_attributes.common_name,
+            )
+            return False
+        if self.organization_name != certificate_attributes.organization_name:
             logger.info(
                 "Organization name does not match: %s != %s",
                 self.organization_name,
-                organization_name,
+                certificate_attributes.organization_name,
             )
             return False
-        if self.country_name != country_name:
-            logger.info("Country name does not match: %s != %s", self.country_name, country_name)
+        if self.country_name != certificate_attributes.country_name:
+            logger.info(
+                "Country name does not match: %s != %s",
+                self.country_name,
+                certificate_attributes.country_name,
+            )
             return False
-        if self.state_or_province_name != state_or_province_name:
+        if self.state_or_province_name != certificate_attributes.state_or_province_name:
             logger.info(
                 "State or province name does not match: %s != %s",
                 self.state_or_province_name,
-                state_or_province_name,
+                certificate_attributes.state_or_province_name,
             )
             return False
-        if self.locality_name != locality_name:
+        if self.locality_name != certificate_attributes.locality_name:
             logger.info(
-                "Locality name does not match: %s != %s", self.locality_name, locality_name
+                "Locality name does not match: %s != %s",
+                self.locality_name,
+                certificate_attributes.locality_name,
             )
             return False
-        if self.email_address != email_address:
+        if self.email_address != certificate_attributes.email_address:
             logger.info(
-                "Email address does not match: %s != %s", self.email_address, email_address
+                "Email address does not match: %s != %s",
+                self.email_address,
+                certificate_attributes.email_address,
             )
             return False
         return True
