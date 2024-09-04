@@ -118,6 +118,12 @@ config:
         Locality name to be used in the certificate.
         If not set, no locality name will be used.
 
+    is_ca:
+      type: boolean
+      default: false
+      description: |
+        If set to true, the charm will request a certificate that can be used as a Certificate Authority (CA).
+
 actions:
   get-certificate:
     description: Returns the TLS Certificate.
