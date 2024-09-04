@@ -226,7 +226,7 @@ class TestTLSRequirer:
                 "country_name": "CA",
                 "state_or_province_name": "Quebec",
                 "locality_name": "Montreal",
-                "is_ca": True,
+                "is_ca": "true",
             }
         )
 
