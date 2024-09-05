@@ -226,6 +226,7 @@ class TestTLSRequirer:
                 "country_name": "CA",
                 "state_or_province_name": "Quebec",
                 "locality_name": "Montreal",
+                "is_ca": "true",
             }
         )
 
@@ -237,6 +238,7 @@ class TestTLSRequirer:
             country_name="CA",
             state_or_province_name="Quebec",
             locality_name="Montreal",
+            is_ca=True,
         )
         await wait_for_certificate_available(
             ops_test=ops_test,

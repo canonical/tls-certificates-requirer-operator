@@ -162,6 +162,7 @@ class TLSRequirerCharm(CharmBase):
                 country_name=self._get_config_country_name(),
                 state_or_province_name=self._get_config_state_or_province_name(),
                 locality_name=self._get_config_locality_name(),
+                is_ca=self._get_config_is_ca(),
             )
             for i in range(self._get_config_num_certificates())
         ]
@@ -315,6 +316,13 @@ class TLSRequirerCharm(CharmBase):
     def _get_config_locality_name(self) -> Optional[str]:
         """Return locality name from the configuration."""
         return self._get_str_config("locality_name")
+
+    def _get_config_is_ca(self) -> bool:
+        """Return whether the certificate is a CA."""
+        is_ca = self.model.config.get("is_ca", False)
+        if not isinstance(is_ca, bool):
+            return False
+        return is_ca
 
     def _get_str_config(self, key: str) -> Optional[str]:
         """Return value of specified string juju config."""
