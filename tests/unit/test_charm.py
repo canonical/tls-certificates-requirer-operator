@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import scenario
 from charm import TLSRequirerCharm
-from ops.model import ActiveStatus, BlockedStatus
+from ops import ActiveStatus, BlockedStatus
 from tls import generate_ca, generate_certificate, generate_csr, generate_private_key
 
 from lib.charms.tls_certificates_interface.v4.tls_certificates import (
@@ -18,7 +18,7 @@ from lib.charms.tls_certificates_interface.v4.tls_certificates import (
     TLSCertificatesRequiresV4,
 )
 
-COMMON_NAME = "banana.com"
+COMMON_NAME = "banana.example.com"
 ORGANIZATION_NAME = "Canonical"
 EMAIL_ADDRESS = "canonical@ubuntu.com"
 COUNTRY_NAME = "CA"
@@ -70,7 +70,7 @@ class TestCharmInvalidMode:
             },
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == BlockedStatus(
             "Invalid configuration: Invalid mode configuration: only 'unit' and 'app' are allowed"
@@ -130,7 +130,7 @@ class TestCharmUnitMode:
             },
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == BlockedStatus(
             "Invalid configuration: Common name can't be set when requesting multiple certificates"
@@ -148,10 +148,10 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[],
+            relations=frozenset(),
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("Waiting for certificates relation")
 
@@ -174,10 +174,10 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("0/1 certificate requests are fulfilled")
 
@@ -189,7 +189,7 @@ class TestCharmUnitMode:
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -203,10 +203,8 @@ class TestCharmUnitMode:
         )
 
         certificate_secret = scenario.Secret(
-            id="1",
-            contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
+            {"certificate": CERTIFICATE, "ca-certificate": CA},
             owner="unit",
-            revision=0,
             label="certificate-0",
         )
 
@@ -219,11 +217,11 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
-            secrets=[certificate_secret],
+            relations={certificates_relation},
+            secrets={certificate_secret},
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("1/1 certificate requests are fulfilled")
 
@@ -248,12 +246,12 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
         )
 
         self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
 
-        self.ctx.run(event="update_status", state=state_in)
+        self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
         instance_calls = self.mock_tls_requires.call_args_list
         assert len(instance_calls) == 1
@@ -292,11 +290,11 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -309,14 +307,15 @@ class TestCharmUnitMode:
             private_key,
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
-        assert (
-            state_out.secrets[0].label
-            == f"cert-0.unit-0.tls-certificates-requirer.{state_in.model.name}"
+        secret = state_out.get_secret(
+            label=f"cert-0.unit-0.tls-certificates-requirer.{state_in.model.name}"
         )
-        assert state_out.secrets[0].contents == {
-            0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
+        assert secret.tracked_content == {
+            "certificate": CERTIFICATE,
+            "ca-certificate": CA,
+            "csr": self.csr,
         }
 
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
@@ -324,10 +323,8 @@ class TestCharmUnitMode:
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="1",
-            contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
+            {"certificate": CERTIFICATE, "ca-certificate": CA},
             owner="unit",
-            revision=0,
             label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
 
@@ -347,11 +344,11 @@ class TestCharmUnitMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
-            secrets=[certificate_secret],
+            relations={certificates_relation},
+            secrets={certificate_secret},
         )
 
-        new_common_name = "pizza.com"
+        new_common_name = "pizza.example.com"
         new_csr = generate_csr(
             sans_dns=[new_common_name],
             common_name=new_common_name,
@@ -369,7 +366,7 @@ class TestCharmUnitMode:
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(new_certificate),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -382,9 +379,12 @@ class TestCharmUnitMode:
             private_key,
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
-        assert state_out.secrets[0].contents[1] == {
+        secret = state_out.get_secret(
+            label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}"
+        )
+        assert secret.latest_content == {
             "certificate": new_certificate,
             "ca-certificate": CA,
             "csr": self.csr,
@@ -396,22 +396,19 @@ class TestCharmUnitMode:
                 "mode": "unit",
             },
             leader=True,
-            secrets=[],
+            secrets=frozenset(),
         )
 
-        action_output = self.ctx.run_action(action="get-certificate", state=state_in)
-
-        assert action_output.success is False
+        with pytest.raises(scenario.ActionFailed):
+            self.ctx.run(self.ctx.on.action("get-certificate"), state=state_in)
 
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="1",
-            contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
+            {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr},
             owner="unit",
-            revision=0,
             label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
@@ -421,7 +418,7 @@ class TestCharmUnitMode:
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -439,15 +436,14 @@ class TestCharmUnitMode:
             config={
                 "mode": "unit",
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[certificate_secret],
+            secrets={certificate_secret},
         )
 
-        action_output = self.ctx.run_action(action="get-certificate", state=state_in)
+        self.ctx.run(self.ctx.on.action("get-certificate"), state=state_in)
 
-        assert action_output.success is True
-        assert action_output.results == {
+        assert self.ctx.action_results == {
             "certificates": json.dumps(
                 [
                     {
@@ -464,10 +460,8 @@ class TestCharmUnitMode:
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
-            contents={0: {"certificate": "whatever", "ca-certificate": CA}},
+            {"certificate": "whatever", "ca-certificate": CA},
             owner="unit",
-            revision=0,
             label=f"cert-0.unit-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
@@ -481,13 +475,15 @@ class TestCharmUnitMode:
             config={
                 "mode": "unit",
             },
-            relations=[certificates_relation],
-            secrets=[certificate_secret],
+            relations={certificates_relation},
+            secrets={certificate_secret},
         )
 
-        state_out = self.ctx.run(event=certificates_relation.broken_event, state=state_in)
+        state_out = self.ctx.run(
+            self.ctx.on.relation_broken(relation=certificates_relation), state=state_in
+        )
 
-        assert state_out.secrets[0].contents == {}
+        assert not state_out.secrets
 
 
 class TestCharmAppMode:
@@ -543,7 +539,7 @@ class TestCharmAppMode:
             },
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == BlockedStatus(
             "Invalid configuration: Common name can't be set when requesting multiple certificates"
@@ -564,7 +560,7 @@ class TestCharmAppMode:
             leader=True,
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("Waiting for certificates relation")
 
@@ -583,7 +579,7 @@ class TestCharmAppMode:
             leader=False,
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == BlockedStatus(
             "This charm can't scale when deployed in app mode"
@@ -609,12 +605,12 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[],
+            secrets=frozenset(),
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("0/1 certificate requests are fulfilled")
 
@@ -625,7 +621,7 @@ class TestCharmAppMode:
             remote_app_name="certificate-provider",
         )
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -648,12 +644,12 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[],
+            secrets=frozenset(),
         )
 
-        state_out = self.ctx.run(event="collect_unit_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
 
         assert state_out.unit_status == ActiveStatus("1/1 certificate requests are fulfilled")
 
@@ -676,13 +672,13 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=False,
         )
 
         self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
 
-        self.ctx.run(event="update_status", state=state_in)
+        self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
         instance_calls = self.mock_tls_requires.call_args_list
         assert len(instance_calls) == 0
@@ -708,13 +704,13 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
         )
 
         self.mock_tls_requires.return_value.get_assigned_certificate.return_value = (None, None)
 
-        self.ctx.run(event="update_status", state=state_in)
+        self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
         instance_calls = self.mock_tls_requires.call_args_list
         assert len(instance_calls) == 1
@@ -743,7 +739,7 @@ class TestCharmAppMode:
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -766,18 +762,20 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[],
+            secrets=frozenset(),
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
-        assert (
-            state_out.secrets[0].label == f"cert-0.tls-certificates-requirer.{state_in.model.name}"
+        secret = state_out.get_secret(
+            label=f"cert-0.tls-certificates-requirer.{state_in.model.name}"
         )
-        assert state_out.secrets[0].contents == {
-            0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}
+        assert secret.tracked_content == {
+            "certificate": CERTIFICATE,
+            "ca-certificate": CA,
+            "csr": self.csr,
         }
 
     def test_given_certificate_already_stored_when_new_matching_certificate_available_then_certificate_is_overwritten(  # noqa: E501
@@ -785,10 +783,8 @@ class TestCharmAppMode:
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="1",
-            contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA}},
+            {"certificate": CERTIFICATE, "ca-certificate": CA},
             owner="app",
-            revision=0,
             label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
@@ -807,12 +803,12 @@ class TestCharmAppMode:
                 "state_or_province_name": STATE_OR_PROVINCE_NAME,
                 "locality_name": LOCALITY_NAME,
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[certificate_secret],
+            secrets={certificate_secret},
         )
 
-        new_common_name = "blou.ca"
+        new_common_name = "blou.ca.example.com"
         new_csr = generate_csr(
             sans_dns=[new_common_name],
             common_name=new_common_name,
@@ -829,7 +825,7 @@ class TestCharmAppMode:
             ca_key=provider_private_key,
         )
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(new_certificate),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -843,9 +839,10 @@ class TestCharmAppMode:
             private_key,
         )
 
-        state_out = self.ctx.run(event="update_status", state=state_in)
+        state_out = self.ctx.run(self.ctx.on.update_status(), state=state_in)
 
-        assert state_out.secrets[0].contents[1] == {
+        secret = state_out.get_secret(label=f"cert-0.tls-certificates-requirer.{model_name}")
+        assert secret.latest_content == {
             "certificate": new_certificate,
             "ca-certificate": CA,
             "csr": self.csr,
@@ -857,22 +854,19 @@ class TestCharmAppMode:
                 "mode": "app",
             },
             leader=True,
-            secrets=[],
+            secrets=frozenset(),
         )
 
-        action_output = self.ctx.run_action(action="get-certificate", state=state_in)
-
-        assert action_output.success is False
+        with pytest.raises(scenario.ActionFailed):
+            self.ctx.run(self.ctx.on.action("get-certificate"), state=state_in)
 
     def test_given_certificate_is_stored_when_on_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
-            contents={0: {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr}},
+            {"certificate": CERTIFICATE, "ca-certificate": CA, "csr": self.csr},
             owner="app",
-            revision=0,
             label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
@@ -882,7 +876,7 @@ class TestCharmAppMode:
         )
 
         provider_certificate = ProviderCertificate(
-            relation_id=certificates_relation.relation_id,
+            relation_id=certificates_relation.id,
             certificate=Certificate.from_string(CERTIFICATE),
             ca=Certificate.from_string(CA),
             chain=[Certificate.from_string(CA)],
@@ -901,15 +895,14 @@ class TestCharmAppMode:
             config={
                 "mode": "app",
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[certificate_secret],
+            secrets={certificate_secret},
         )
 
-        action_output = self.ctx.run_action(action="get-certificate", state=state_in)
+        self.ctx.run(self.ctx.on.action("get-certificate"), state=state_in)
 
-        assert action_output.success is True
-        assert action_output.results == {
+        assert self.ctx.action_results == {
             "certificates": json.dumps(
                 [
                     {
@@ -926,10 +919,8 @@ class TestCharmAppMode:
     ):
         model_name = "abc"
         certificate_secret = scenario.Secret(
-            id="2",
-            contents={0: {"certificate": "whatever", "ca-certificate": CA}},
+            {"certificate": "whatever", "ca-certificate": CA},
             owner="app",
-            revision=0,
             label=f"cert-0.tls-certificates-requirer.{model_name}",
         )
         certificates_relation = scenario.Relation(
@@ -943,11 +934,13 @@ class TestCharmAppMode:
             config={
                 "mode": "app",
             },
-            relations=[certificates_relation],
+            relations={certificates_relation},
             leader=True,
-            secrets=[certificate_secret],
+            secrets={certificate_secret},
         )
 
-        state_out = self.ctx.run(event=certificates_relation.broken_event, state=state_in)
+        state_out = self.ctx.run(
+            self.ctx.on.relation_broken(certificates_relation), state=state_in
+        )
 
-        assert state_out.secrets[0].contents == {}
+        assert not state_out.secrets
