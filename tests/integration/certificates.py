@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from cryptography import x509
+from cryptography.hazmat._oid import ExtensionOID
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class CertificateAttributes:
     country_name: Optional[str] = None
     state_or_province_name: Optional[str] = None
     locality_name: Optional[str] = None
+    is_ca: Optional[bool] = False
 
 
 class Certificate:
@@ -92,6 +94,16 @@ class Certificate:
             return None
         return str(locality)
 
+    @property
+    def is_ca(self) -> bool:
+        try:
+            is_ca = self.certificate.extensions.get_extension_for_oid(
+                ExtensionOID.BASIC_CONSTRAINTS
+            ).value.ca  # type: ignore[reportAttributeAccessIssue]
+            return is_ca
+        except x509.ExtensionNotFound:
+            return False
+
     def has_attributes(
         self,
         certificate_attributes: CertificateAttributes,
@@ -137,6 +149,13 @@ class Certificate:
                 "Email address does not match: %s != %s",
                 self.email_address,
                 certificate_attributes.email_address,
+            )
+            return False
+        if self.is_ca != certificate_attributes.is_ca:
+            logger.info(
+                "Is CA does not match: %s != %s",
+                self.is_ca,
+                certificate_attributes.is_ca,
             )
             return False
         return True
