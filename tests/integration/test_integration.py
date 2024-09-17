@@ -5,6 +5,7 @@
 import asyncio
 import json
 import logging
+import platform
 import time
 from pathlib import Path
 
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 SELF_SIGNED_CERTIFICATES_CHARM_NAME = "self-signed-certificates"
 
 NUM_UNITS = 3
+
+ARCH = "arm64" if platform.machine() == "aarch64" else "amd64"
 
 
 async def wait_for_certificate_available(
@@ -83,6 +86,8 @@ class TestTLSRequirer:
         """Deploy charm under test."""
         assert ops_test.model
         charm = Path(request.config.getoption("--charm_path")).resolve()
+        logger.info("Deploying charms for architecture: %s", ARCH)
+        await ops_test.model.set_constraints({"arch": ARCH})
         await ops_test.model.deploy(
             charm,
             config={
@@ -95,11 +100,13 @@ class TestTLSRequirer:
             application_name=self.APP_NAME,
             series="jammy",
             num_units=NUM_UNITS,
+            constraints={"arch": ARCH},
         )
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
             channel="edge",
+            constraints={"arch": ARCH},
         )
         await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})
         deployed_apps = [self.APP_NAME, self.SELF_SIGNED_CERTIFICATES_APP_NAME]
