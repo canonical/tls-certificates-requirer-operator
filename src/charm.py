@@ -9,7 +9,7 @@ import logging
 from typing import FrozenSet, List, Optional, Tuple
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
-    CertificateRequest,
+    CertificateRequestAttributes,
     Mode,
     TLSCertificatesRequiresV4,
 )
@@ -152,9 +152,9 @@ class TLSRequirerCharm(CharmBase):
         certificate_requests_num = len(self._get_certificate_requests())
         return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
 
-    def _get_certificate_requests(self) -> List[CertificateRequest]:
+    def _get_certificate_requests(self) -> List[CertificateRequestAttributes]:
         return [
-            CertificateRequest(
+            CertificateRequestAttributes(
                 common_name=self._get_common_name(i),
                 sans_dns=self._get_sans_dns(i),
                 organization=self._get_config_organization_name(),
@@ -167,9 +167,9 @@ class TLSRequirerCharm(CharmBase):
             for i in range(self._get_config_num_certificates())
         ]
 
-    def _certificate_is_stored(self, certificate_request: CertificateRequest) -> bool:
+    def _certificate_is_stored(self, certificate_request: CertificateRequestAttributes) -> bool:
         """Return whether certificate is available in Juju secret."""
-        if not self._certificate_secret_exists:
+        if not self._certificate_secret_exists(certificate_request=certificate_request):
             return False
         try:
             stored_certificate_secret = self.model.get_secret(
@@ -186,7 +186,9 @@ class TLSRequirerCharm(CharmBase):
             return False
         return str(assigned_certificate.certificate) == stored_certificate
 
-    def _store_certificate(self, mode: Mode, certificate_request: CertificateRequest) -> None:
+    def _store_certificate(
+        self, mode: Mode, certificate_request: CertificateRequestAttributes
+    ) -> None:
         """Store the assigned certificate in a Juju secret."""
         assigned_certificate, _ = self.certificates.get_assigned_certificate(
             certificate_request=certificate_request
@@ -331,7 +333,9 @@ class TLSRequirerCharm(CharmBase):
             return None
         return value
 
-    def _certificate_secret_exists(self, certificate_request: CertificateRequest) -> bool:
+    def _certificate_secret_exists(
+        self, certificate_request: CertificateRequestAttributes
+    ) -> bool:
         return self._secret_exists(
             label=self._get_certificate_secret_label(certificate_request=certificate_request)
         )
@@ -377,7 +381,9 @@ class TLSRequirerCharm(CharmBase):
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]
 
-    def _get_certificate_secret_label(self, certificate_request: CertificateRequest) -> str:
+    def _get_certificate_secret_label(
+        self, certificate_request: CertificateRequestAttributes
+    ) -> str:
         return certificate_request.common_name
 
 
