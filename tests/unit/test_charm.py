@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 import scenario
-from charm import TLSRequirerCharm
 from ops import ActiveStatus, BlockedStatus
 from tls import generate_ca, generate_certificate, generate_csr, generate_private_key
 
+from charm import TLSRequirerCharm
 from lib.charms.tls_certificates_interface.v4.tls_certificates import (
     Certificate,
     CertificateSigningRequest,
