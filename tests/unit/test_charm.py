@@ -95,7 +95,7 @@ class TestCharmUnitMode:
         self.private_key = generate_private_key()
 
     @pytest.fixture(autouse=True)
-    def csr_fixture(self, private_key_fixture):
+    def csr_fixture(self, private_key_fixture: None):
         self.csr = generate_csr(
             sans_dns=[COMMON_NAME],
             common_name=COMMON_NAME,
@@ -504,7 +504,7 @@ class TestCharmAppMode:
         self.private_key = generate_private_key()
 
     @pytest.fixture(autouse=True)
-    def csr_fixture(self, private_key_fixture):
+    def csr_fixture(self, private_key_fixture: None):
         self.csr = generate_csr(
             sans_dns=[COMMON_NAME],
             common_name=COMMON_NAME,

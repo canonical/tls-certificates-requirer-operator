@@ -6,7 +6,7 @@
 
 import json
 import logging
-from typing import FrozenSet, List, Optional, Tuple
+from typing import Any, FrozenSet, List, Optional, Tuple
 
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequestAttributes,
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class TLSRequirerCharm(CharmBase):
     """TLS Requirer Charm."""
 
-    def __init__(self, *args):
+    def __init__(self, *args: Any):
         """Handle events for certificate management."""
         super().__init__(*args)
         self.framework.observe(self.on.collect_unit_status, self._on_collect_status)

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from certificates import Certificate, CertificateAttributes
+from juju.model import Model
 from juju.unit import Unit
 from pytest_operator.plugin import OpsTest
 
@@ -69,7 +70,7 @@ async def wait_for_certificate_available(
     raise TimeoutError("Timed out waiting for certificate")
 
 
-async def get_leader_unit(model, application_name: str) -> Unit:
+async def get_leader_unit(model: Model, application_name: str) -> Unit:
     """Return the leader unit for the given application."""
     for unit in model.units.values():
         if unit.application == application_name and await unit.is_leader_from_status():
@@ -82,10 +83,10 @@ class TestTLSRequirer:
     SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates"
 
     @pytest.fixture(scope="module")
-    async def deploy(self, ops_test: OpsTest, request):
+    async def deploy(self, ops_test: OpsTest, request: pytest.FixtureRequest):
         """Deploy charm under test."""
         assert ops_test.model
-        charm = Path(request.config.getoption("--charm_path")).resolve()
+        charm = Path(str(request.config.getoption("--charm_path"))).resolve()
         logger.info("Deploying charms for architecture: %s", ARCH)
         await ops_test.model.set_constraints({"arch": ARCH})
         await ops_test.model.deploy(
@@ -124,7 +125,7 @@ class TestTLSRequirer:
     async def test_given_charm_is_built_when_deployed_then_status_is_active(
         self,
         ops_test: OpsTest,
-        deploy,
+        deploy: None,
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
@@ -137,7 +138,7 @@ class TestTLSRequirer:
     async def test_given_self_signed_certificates_deployed_when_integrate_then_status_is_active(
         self,
         ops_test: OpsTest,
-        deploy,
+        deploy: None,
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
@@ -157,8 +158,8 @@ class TestTLSRequirer:
 
     async def test_given_self_signed_certificates_is_related_when_get_certificate_action_then_certificate_is_returned(  # noqa: E501
         self,
-        ops_test,
-        deploy,
+        ops_test: OpsTest,
+        deploy: None,
     ):
         assert ops_test.model
         for unit in range(NUM_UNITS):
@@ -177,7 +178,7 @@ class TestTLSRequirer:
             )
 
     async def test_given_new_configuration_when_config_changed_then_new_certificate_is_requested(
-        self, ops_test, deploy
+        self, ops_test: OpsTest, deploy: None
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
@@ -215,7 +216,7 @@ class TestTLSRequirer:
             )
 
     async def test_given_app_mode_when_config_changed_then_new_certificate_is_requested(
-        self, ops_test, deploy
+        self, ops_test: OpsTest, deploy: None
     ):
         assert ops_test.model
         await ops_test.model.wait_for_idle(
