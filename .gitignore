@@ -1,7 +1,9 @@
 venv/
+.venv/
 build/
 *.charm
 .tox
+*.egg-info/
 
 .coverage
 __pycache__/
