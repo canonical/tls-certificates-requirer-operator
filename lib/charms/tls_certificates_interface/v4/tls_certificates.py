@@ -1144,7 +1144,11 @@ class TLSCertificatesRequiresV4(Object):
 
     def _regenerate_private_key(self) -> None:
         secret = self.charm.model.get_secret(label=self._get_private_key_secret_label())
-        secret.set_content({"private-key": str(generate_private_key())})
+        private_key = generate_private_key()
+        secret.set_content({"private-key": str(private_key)})
+        logger.info("Private key regenerated %s", private_key)
+        logger.info("Stored private key is %s", secret.get_content(refresh=True)["private-key"])
+        logger.info("Private key in property is %s", self.private_key)
 
     def _private_key_generated(self) -> bool:
         try:

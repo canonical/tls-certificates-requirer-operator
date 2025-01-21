@@ -150,3 +150,7 @@ config:
 actions:
   get-certificate:
     description: Returns the TLS Certificate.
+  rotate-private-key:
+    description: Rotates the private key.
+  get-assigned-certificates:
+    description: Returns the assigned TLS Certificates.

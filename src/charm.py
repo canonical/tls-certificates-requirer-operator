@@ -38,6 +38,8 @@ class TLSRequirerCharm(CharmBase):
             self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
+        self.framework.observe(self.on.rotate_private_key_action, self._on_rotate_private_key_action)
+        self.framework.observe(self.on.get_assigned_certificates_action, self._on_get_assigned_certificates_action)
         mode = self._get_config_mode()
         if not mode:
             logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
@@ -377,6 +379,24 @@ class TLSRequirerCharm(CharmBase):
             else:
                 event.fail(f"Certificate not available: {certificate_request.common_name}")
         event.set_results({"certificates": json.dumps(certificates)})
+
+    def _on_rotate_private_key_action(self, event: ActionEvent) -> None:
+        """Triggered when users run the `rotate-private-key` Juju action.
+
+        Args:
+            event: Juju event
+        """
+        self.certificates.regenerate_private_key()
+        event.set_results({"status": "Private key rotated"})
+
+    def _on_get_assigned_certificates_action(self, event: ActionEvent) -> None:
+        """Triggered when users run the `get-assigned-certificate` Juju action.
+
+        Args:
+            event: Juju event
+        """
+        assigned_certs, _ = self.certificates.get_assigned_certificates()
+        event.set_results({"assigned_certs": assigned_certs})
 
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]
