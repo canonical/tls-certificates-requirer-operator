@@ -106,7 +106,7 @@ class TestTLSRequirer:
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="edge",
+            channel="1/edge",
             constraints={"arch": ARCH},
         )
         await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from cryptography import x509
-from cryptography.hazmat._oid import ExtensionOID
+from cryptography.x509.oid import ExtensionOID
 
 logger = logging.getLogger(__name__)
 
