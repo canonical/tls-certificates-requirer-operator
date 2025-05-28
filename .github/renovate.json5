@@ -1,3 +1,4 @@
 {
-    "extends": ["github>canonical/identity-credentials-workflows/renovate.json5#v0"]
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": ["github>canonical//identity-credentials-workflows/renovate.json5#v0"]
 }
