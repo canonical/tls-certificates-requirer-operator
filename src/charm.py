@@ -57,6 +57,13 @@ class TLSRequirerCharm(CharmBase):
                 self.on.config_changed,
             ],
         )
+        # Subscribe to TLS requires-side events once
+        self.framework.observe(
+            self.certificates.on.certificate_denied, self._on_certificate_denied
+        )
+        self.framework.observe(
+            self.certificates.on.certificate_available, self._on_certificate_available
+        )
 
     @property
     def _certificates_relation_created(self) -> bool:
@@ -75,6 +82,11 @@ class TLSRequirerCharm(CharmBase):
         is_valid, msg = self._config_is_valid()
         if not is_valid:
             event.add_status(BlockedStatus(f"Invalid configuration: {msg}"))
+            return
+        # If provider reported request errors for our CSRs, reflect them as BlockedStatus.
+        denied_message = self._get_provider_denied_message_for_our_csrs()
+        if denied_message:
+            event.add_status(BlockedStatus(denied_message))
             return
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
@@ -347,6 +359,106 @@ class TLSRequirerCharm(CharmBase):
             return True
         except (SecretNotFoundError, KeyError):
             return False
+
+    def _get_provider_denied_message_for_our_csrs(self) -> Optional[str]:
+        """Return a BlockedStatus message if any of our CSRs were denied by the provider.
+
+        Reads provider-side request_errors from the certificates relation app databag and
+        matches them against our current CSR strings. Returns the first matching denial message,
+        or None if no denial applies to our requests.
+        """
+        try:
+            relation = self.model.get_relation("certificates")
+        except KeyError:
+            relation = None
+        if not relation or not relation.app:
+            return None
+        try:
+            raw = relation.data[relation.app].get("request_errors")
+        except KeyError:
+            raw = None
+        if not raw:
+            return None
+        try:
+            entries = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        our_csr_strings = {
+            str(req.certificate_signing_request)
+            for req in self.certificates.get_csrs_from_requirer_relation_data()
+        }
+        for entry in entries:
+            try:
+                if entry.get("csr") not in our_csr_strings:
+                    continue
+                error = entry.get("error", {}) or {}
+                code = str(error.get("code", "")).upper()
+                if code == "IP_NOT_ALLOWED":
+                    return "CSR contains IP SANs not allowed by provider role"
+                if code == "DOMAIN_NOT_ALLOWED":
+                    return "Requested CN/SANs not allowed by provider role"
+                if code == "WILDCARD_NOT_ALLOWED":
+                    return "Wildcard DNS names are not allowed by provider role"
+                provider_msg = error.get("message") or "unknown reason"
+                return f"Certificate request denied: {provider_msg}"
+            except Exception:
+                # Ignore malformed entries; continue checking others
+                continue
+        return None
+
+    def _on_certificate_denied(self, event: EventBase) -> None:
+        """Set BlockedStatus with a clear message and warn-log when a CSR is denied."""
+        relation_id = self._find_relation_id_for_csr(event.certificate_signing_request)
+        cn = event.certificate_signing_request.common_name
+        code_obj = getattr(event, "error", None)
+        code_value = getattr(code_obj, "code", None)
+        code_name = getattr(code_value, "name", str(code_value)) if code_value is not None else "UNKNOWN"
+        if code_name == "IP_NOT_ALLOWED":
+            message = "CSR contains IP SANs not allowed by provider role"
+        elif code_name == "DOMAIN_NOT_ALLOWED":
+            message = "Requested CN/SANs not allowed by provider role"
+        elif code_name == "WILDCARD_NOT_ALLOWED":
+            message = "Wildcard DNS names are not allowed by provider role"
+        else:
+            provider_msg = getattr(code_obj, "message", "unknown reason")
+            message = f"Certificate request denied: {provider_msg}"
+        # Idempotent: only update/log if changed
+        current_status = self.unit.status
+        if isinstance(current_status, BlockedStatus) and str(current_status) == message:
+            return
+        self.unit.status = BlockedStatus(message)
+        logger.warning(
+            "Relation %s: CSR CN %s denied with code %s: %s",
+            relation_id if relation_id is not None else "unknown",
+            cn,
+            code_name,
+            getattr(code_obj, "message", message),
+        )
+
+    def _on_certificate_available(self, event: EventBase) -> None:
+        """Clear BlockedStatus when a certificate becomes available for our CSR."""
+        relation_id = self._find_relation_id_for_csr(event.certificate_signing_request)
+        if relation_id is None:
+            return
+        if isinstance(self.unit.status, BlockedStatus):
+            new_status = ActiveStatus(self._get_certificate_fulfillment_status())
+            if str(self.unit.status) != str(new_status):
+                self.unit.status = new_status
+                logger.info(
+                    "Relation %s: CSR CN %s certificate available; clearing blocked status",
+                    relation_id,
+                    event.certificate_signing_request.common_name,
+                )
+
+    def _find_relation_id_for_csr(self, csr: Any) -> Optional[int]:
+        """Return relation id for a CSR that matches one of our requests."""
+        try:
+            for req in self.certificates.get_csrs_from_requirer_relation_data():
+                if str(req.certificate_signing_request) == str(csr):
+                    return req.relation_id
+        except Exception:
+            return None
+        return None
 
     def _on_get_certificate_action(self, event: ActionEvent) -> None:
         """Triggered when users run the `get-certificate` Juju action.
