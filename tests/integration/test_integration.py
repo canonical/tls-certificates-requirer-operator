@@ -81,6 +81,8 @@ async def get_leader_unit(model: Model, application_name: str) -> Unit:
 class TestTLSRequirer:
     APP_NAME = "tls-requirer"
     SELF_SIGNED_CERTIFICATES_APP_NAME = "self-signed-certificates"
+    SELF_SIGNED_CERTIFICATES_AMD64_REVISION = 317
+    SELF_SIGNED_CERTIFICATES_ARM64_REVISION = 262
 
     @pytest.fixture(scope="module")
     async def deploy(self, ops_test: OpsTest, request: pytest.FixtureRequest):
@@ -88,6 +90,11 @@ class TestTLSRequirer:
         assert ops_test.model
         charm = Path(str(request.config.getoption("--charm_path"))).resolve()
         logger.info("Deploying charms for architecture: %s", ARCH)
+        revision = (
+            self.SELF_SIGNED_CERTIFICATES_ARM64_REVISION
+            if ARCH == "arm64"
+            else self.SELF_SIGNED_CERTIFICATES_AMD64_REVISION
+        )
         await ops_test.model.set_constraints({"arch": ARCH})
         await ops_test.model.deploy(
             charm,
@@ -106,7 +113,8 @@ class TestTLSRequirer:
         await ops_test.model.deploy(
             SELF_SIGNED_CERTIFICATES_CHARM_NAME,
             application_name=self.SELF_SIGNED_CERTIFICATES_APP_NAME,
-            channel="1/edge",
+            channel="1/stable",
+            revision=revision,
             constraints={"arch": ARCH},
         )
         await ops_test.model.set_config(config={"update-status-hook-interval": "10s"})
