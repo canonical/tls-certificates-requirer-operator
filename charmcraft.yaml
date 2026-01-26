@@ -52,8 +52,8 @@ parts:
 requires:
   certificates:
     interface: tls-certificates
-  certificate-transfer:
-    interface: certificate-transfer
+  certificate_transfer:
+    interface: certificate_transfer
 
 config:
   options:

@@ -63,7 +63,7 @@ class TLSRequirerCharm(CharmBase):
             ],
         )
         self.certificate_transfer_requirer = CertificateTransferRequires(
-            self, "certificate-transfer"
+            self, "certificate_transfer"
         )
         self.framework.observe(
             self.certificate_transfer_requirer.on.certificate_set_updated,
