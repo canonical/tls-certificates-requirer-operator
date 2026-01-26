@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 import scenario
 from ops import ActiveStatus, BlockedStatus
+from ops.framework import Handle
 from tls import generate_ca, generate_certificate, generate_csr, generate_private_key
 
 from charm import TLSRequirerCharm
@@ -962,7 +963,9 @@ class TestCharmAppMode:
             ):
                 mgr.charm._on_certificate_set_updated(
                     CertificatesAvailableEvent(
-                        handle=None, certificates={CA_1, CA_2}, relation_id=1
+                        handle=Handle(None, "dummy", "dummy"),
+                        certificates={CA_1, CA_2},
+                        relation_id=1,
                     )
                 )
             state_out = mgr.run()
@@ -981,7 +984,7 @@ class TestCharmAppMode:
                 mgr.charm.certificate_transfer_requirer, "get_all_certificates", return_value=[]
             ):
                 mgr.charm._on_certificates_removed(
-                    CertificatesRemovedEvent(handle=None, relation_id=1)
+                    CertificatesRemovedEvent(handle=Handle(None, "dummy", "dummy"), relation_id=1)
                 )
             state_out = mgr.run()
 
