@@ -428,20 +428,27 @@ class TLSRequirerCharm(CharmBase):
         secret_content = {"ca-certificates": bundle_pem}
 
         try:
+            secret = self.model.get_secret(label="trusted-ca-certificates")
+        except SecretNotFoundError:
             try:
-                secret = self.model.get_secret(label="trusted-ca-certificates")
-                secret.set_content(secret_content)
-            except SecretNotFoundError:
-                secret = self.app.add_secret(
-                    content=secret_content, label="trusted-ca-certificates"
+                self.app.add_secret(content=secret_content, label="trusted-ca-certificates")
+                logger.info(
+                    "Created trusted-ca-certificates secret with %d certificates",
+                    len(unique_sorted_pems),
                 )
+                return
+            except ModelError:
+                logger.exception("Failed to create trusted CA bundle secret")
+                return
 
+        try:
+            secret.set_content(secret_content)
             logger.info(
-                "Trusted CA bundle updated: %d unique certificates stored.",
+                "Updated trusted-ca-certificates secret with %d certificates",
                 len(unique_sorted_pems),
             )
         except ModelError:
-            logger.exception("Failed to store/update trusted CA bundle secret")
+            logger.exception("Failed to update trusted CA bundle secret")
 
     def _on_certificates_removed(self, event: CertificatesRemovedEvent) -> None:
         """Clean up trusted CA bundle when certificates are removed from a relation.
@@ -455,7 +462,7 @@ class TLSRequirerCharm(CharmBase):
         self._cleanup_ca_secret_if_empty()
 
     def _cleanup_ca_secret_if_empty(self) -> None:
-        """Remove the trusted CA secret only if truly empty across all relations."""
+        """Remove the trusted CA secret only if empty across all relations."""
         if not self.certificate_transfer_requirer.get_all_certificates():
             try:
                 secret = self.model.get_secret(label="trusted-ca-certificates")
