@@ -10,6 +10,10 @@ from ops import ActiveStatus, BlockedStatus
 from tls import generate_ca, generate_certificate, generate_csr, generate_private_key
 
 from charm import TLSRequirerCharm
+from lib.charms.certificate_transfer_interface.v1.certificate_transfer import (
+    CertificatesAvailableEvent,
+    CertificatesRemovedEvent,
+)
 from lib.charms.tls_certificates_interface.v4.tls_certificates import (
     Certificate,
     CertificateSigningRequest,
@@ -47,6 +51,9 @@ CERTIFICATE = generate_certificate(
     ca=CA,
     ca_key=provider_private_key,
 )
+
+CA_1 = "-----BEGIN CERTIFICATE-----\nCA1\n-----END CERTIFICATE-----"
+CA_2 = "-----BEGIN CERTIFICATE-----\nCA2\n-----END CERTIFICATE-----"
 
 
 class TestCharmInvalidMode:
@@ -944,3 +951,49 @@ class TestCharmAppMode:
         )
 
         assert not state_out.secrets
+
+    def test_on_certificate_set_updated_creates_bundle_secret(self):
+        state_in = scenario.State(config={"mode": "app"}, leader=True)
+        with self.ctx(self.ctx.on.install(), state_in) as mgr:
+            with patch.object(
+                mgr.charm.certificate_transfer_requirer,
+                "get_all_certificates",
+                return_value=[CA_1, CA_2],
+            ):
+                mgr.charm._on_certificate_set_updated(
+                    CertificatesAvailableEvent(
+                        handle=None, certificates={CA_1, CA_2}, relation_id=1
+                    )
+                )
+            state_out = mgr.run()
+
+        secret = state_out.get_secret(label="trusted-ca-certificates")
+        assert secret.tracked_content == {"ca-certificates": "\n".join(sorted({CA_1, CA_2}))}
+
+    def test_on_certificates_removed_deletes_secret_when_no_certs_left(self):
+        existing = scenario.Secret(
+            {"ca-certificates": CA_1}, owner="app", label="trusted-ca-certificates"
+        )
+
+        state_in = scenario.State(config={"mode": "app"}, leader=True, secrets={existing})
+        with self.ctx(self.ctx.on.install(), state_in) as mgr:
+            with patch.object(
+                mgr.charm.certificate_transfer_requirer, "get_all_certificates", return_value=[]
+            ):
+                mgr.charm._on_certificates_removed(
+                    CertificatesRemovedEvent(handle=None, relation_id=1)
+                )
+            state_out = mgr.run()
+
+        with pytest.raises(KeyError):
+            state_out.get_secret(label="trusted-ca-certificates")
+
+    def test_get_trusted_ca_certificates_action_returns_bundle(self):
+        existing = scenario.Secret(
+            {"ca-certificates": CA_1}, owner="app", label="trusted-ca-certificates"
+        )
+        state_in = scenario.State(config={"mode": "app"}, leader=True, secrets={existing})
+
+        self.ctx.run(self.ctx.on.action("get-trusted-ca-certificates"), state=state_in)
+
+        assert self.ctx.action_results == {"ca-certificates": CA_1, "count": 1}
