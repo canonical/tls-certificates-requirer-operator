@@ -52,6 +52,8 @@ parts:
 requires:
   certificates:
     interface: tls-certificates
+  certificate-transfer:
+    interface: certificate-transfer
 
 config:
   options:
@@ -132,3 +134,6 @@ config:
 actions:
   get-certificate:
     description: Returns the TLS Certificate.
+
+  get-trusted-ca-certificates: 
+    description: Get the trusted CA certificates received via certificate-transfer interface.
