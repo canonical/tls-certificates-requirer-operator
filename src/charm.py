@@ -9,8 +9,6 @@ import logging
 from typing import Any, FrozenSet, List, Optional, Tuple
 
 from charms.certificate_transfer_interface.v1.certificate_transfer import (
-    CertificatesAvailableEvent,
-    CertificatesRemovedEvent,
     CertificateTransferRequires,
 )
 from charms.tls_certificates_interface.v4.tls_certificates import (
@@ -66,12 +64,10 @@ class TLSRequirerCharm(CharmBase):
             self, "certificate_transfer"
         )
         self.framework.observe(
-            self.certificate_transfer_requirer.on.certificate_set_updated,
-            self._on_certificate_set_updated,
+            self.certificate_transfer_requirer.on.certificate_set_updated, self._configure
         )
         self.framework.observe(
-            self.certificate_transfer_requirer.on.certificates_removed,
-            self._on_certificates_removed,
+            self.certificate_transfer_requirer.on.certificates_removed, self._configure
         )
         self.framework.observe(
             self.on.get_trusted_ca_certificates_action, self._on_get_trusted_ca_certificates_action
@@ -125,6 +121,10 @@ class TLSRequirerCharm(CharmBase):
         if not is_valid:
             logger.error("Invalid configuration: %s", msg)
             return
+
+        if self.unit.is_leader():
+            self._manage_trusted_ca_bundle()
+
         mode = self._get_config_mode()
         assert mode
         if not self._certificates_relation_created:
@@ -405,14 +405,11 @@ class TLSRequirerCharm(CharmBase):
     ) -> str:
         return certificate_request.common_name
 
-    def _on_certificate_set_updated(self, event: CertificatesAvailableEvent) -> None:
+    def _manage_trusted_ca_bundle(self) -> None:
         """Update trusted CA bundle when provider changes certificates on a relation.
 
         Recomputes the full union of CAs from all relations and stores a single
         deduplicated PEM bundle in the shared secret.
-
-        Args:
-            event: Juju event
         """
         all_certificates = self.certificate_transfer_requirer.get_all_certificates()
 
@@ -449,17 +446,6 @@ class TLSRequirerCharm(CharmBase):
             )
         except ModelError:
             logger.exception("Failed to update trusted CA bundle secret")
-
-    def _on_certificates_removed(self, event: CertificatesRemovedEvent) -> None:
-        """Clean up trusted CA bundle when certificates are removed from a relation.
-
-        Only removes the secret if no certificates remain across any relations.
-
-        Args:
-            event: Juju event.
-        """
-        logger.info("Certificates removed from relation %d", event.relation_id)
-        self._cleanup_ca_secret_if_empty()
 
     def _cleanup_ca_secret_if_empty(self) -> None:
         """Remove the trusted CA secret only if empty across all relations."""
