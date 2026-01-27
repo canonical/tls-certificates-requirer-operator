@@ -8,6 +8,9 @@ import json
 import logging
 from typing import Any, FrozenSet, List, Optional, Tuple
 
+from charms.certificate_transfer_interface.v1.certificate_transfer import (
+    CertificateTransferRequires,
+)
 from charms.tls_certificates_interface.v4.tls_certificates import (
     CertificateRequestAttributes,
     Mode,
@@ -56,6 +59,18 @@ class TLSRequirerCharm(CharmBase):
             refresh_events=[
                 self.on.config_changed,
             ],
+        )
+        self.certificate_transfer_requirer = CertificateTransferRequires(
+            self, "certificate_transfer"
+        )
+        self.framework.observe(
+            self.certificate_transfer_requirer.on.certificate_set_updated, self._configure
+        )
+        self.framework.observe(
+            self.certificate_transfer_requirer.on.certificates_removed, self._configure
+        )
+        self.framework.observe(
+            self.on.get_trusted_ca_certificates_action, self._on_get_trusted_ca_certificates_action
         )
 
     @property
@@ -106,6 +121,10 @@ class TLSRequirerCharm(CharmBase):
         if not is_valid:
             logger.error("Invalid configuration: %s", msg)
             return
+
+        if self.unit.is_leader():
+            self._manage_trusted_ca_bundle()
+
         mode = self._get_config_mode()
         assert mode
         if not self._certificates_relation_created:
@@ -385,6 +404,88 @@ class TLSRequirerCharm(CharmBase):
         self, certificate_request: CertificateRequestAttributes
     ) -> str:
         return certificate_request.common_name
+
+    def _manage_trusted_ca_bundle(self) -> None:
+        """Update trusted CA bundle when provider changes certificates on a relation.
+
+        Recomputes the full union of CAs from all relations and stores a single
+        deduplicated PEM bundle in the shared secret.
+        """
+        all_certificates = self.certificate_transfer_requirer.get_all_certificates()
+
+        if not all_certificates:
+            logger.debug("No trusted CA certificates available across any relations")
+            self._cleanup_ca_secret_if_empty()
+            return
+
+        # Deduplicate + deterministic sort (PEM strings are comparable)
+        unique_sorted_pems = sorted(set(all_certificates))
+        bundle_pem = "\n".join(unique_sorted_pems)
+
+        secret_content = {"ca-certificates": bundle_pem}
+
+        try:
+            secret = self.model.get_secret(label="trusted-ca-certificates")
+        except SecretNotFoundError:
+            try:
+                self.app.add_secret(content=secret_content, label="trusted-ca-certificates")
+                logger.info(
+                    "Created trusted-ca-certificates secret with %d certificates",
+                    len(unique_sorted_pems),
+                )
+                return
+            except ModelError:
+                logger.exception("Failed to create trusted CA bundle secret")
+                return
+
+        try:
+            secret.set_content(secret_content)
+            logger.info(
+                "Updated trusted-ca-certificates secret with %d certificates",
+                len(unique_sorted_pems),
+            )
+        except ModelError:
+            logger.exception("Failed to update trusted CA bundle secret")
+
+    def _cleanup_ca_secret_if_empty(self) -> None:
+        """Remove the trusted CA secret only if empty across all relations."""
+        if not self.certificate_transfer_requirer.get_all_certificates():
+            try:
+                secret = self.model.get_secret(label="trusted-ca-certificates")
+            except SecretNotFoundError:
+                return
+            try:
+                secret.remove_all_revisions()
+                logger.info("Removed empty trusted-ca-certificates secret")
+            except ModelError:
+                logger.exception("Failed to remove trusted CA secret")
+
+    def _on_get_trusted_ca_certificates_action(self, event: ActionEvent) -> None:
+        """Return the aggregated trusted CA certificates bundle.
+
+        Returns a single concatenated PEM string containing all unique trusted CAs
+        from all certificate_transfer relations.
+
+        Args:
+            event: Juju action event.
+        """
+        try:
+            secret = self.model.get_secret(label="trusted-ca-certificates")
+        except SecretNotFoundError:
+            event.fail(message="No trusted CA certificates are currently available.")
+            return
+
+        try:
+            content = secret.get_content(refresh=True)
+            ca_bundle = content.get("ca-certificates", "")
+            event.set_results(
+                {
+                    "ca-certificates": ca_bundle,
+                    "count": ca_bundle.count("BEGIN CERTIFICATE") if ca_bundle else 0,
+                }
+            )
+        except Exception as exc:
+            event.fail(f"Failed to retrieve trusted CA bundle: {str(exc)}")
 
 
 if __name__ == "__main__":

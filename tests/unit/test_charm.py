@@ -48,6 +48,9 @@ CERTIFICATE = generate_certificate(
     ca_key=provider_private_key,
 )
 
+CA_1 = "-----BEGIN CERTIFICATE-----\nCA1\n-----END CERTIFICATE-----"
+CA_2 = "-----BEGIN CERTIFICATE-----\nCA2\n-----END CERTIFICATE-----"
+
 
 class TestCharmInvalidMode:
     @pytest.fixture(autouse=True)
@@ -944,3 +947,52 @@ class TestCharmAppMode:
         )
 
         assert not state_out.secrets
+
+    def test_given_certificates_available_when_on_certificate_set_updated_then_bundle_secret_is_created(  # noqa: E501
+        self,
+    ):
+        state_in = scenario.State(config={"mode": "app"}, leader=True)
+        with self.ctx(self.ctx.on.install(), state_in) as mgr:
+            with patch.object(
+                mgr.charm.certificate_transfer_requirer,
+                "get_all_certificates",
+                return_value=[CA_1, CA_2],
+            ):
+                mgr.charm.certificate_transfer_requirer.on.certificate_set_updated.emit(
+                    certificates={CA_1, CA_2},
+                    relation_id=1,
+                )
+                state_out = mgr.run()
+
+        secret = state_out.get_secret(label="trusted-ca-certificates")
+        assert secret.tracked_content == {"ca-certificates": "\n".join(sorted({CA_1, CA_2}))}
+
+    def test_given_no_certificates_available_when_on_certificates_removed_then_bundle_secret_is_removed(  # noqa: E501
+        self,
+    ):
+        existing = scenario.Secret(
+            {"ca-certificates": CA_1}, owner="app", label="trusted-ca-certificates"
+        )
+
+        state_in = scenario.State(config={"mode": "app"}, leader=True, secrets={existing})
+        with self.ctx(self.ctx.on.install(), state_in) as mgr:
+            with patch.object(
+                mgr.charm.certificate_transfer_requirer, "get_all_certificates", return_value=[]
+            ):
+                mgr.charm.certificate_transfer_requirer.on.certificates_removed.emit(relation_id=1)
+                state_out = mgr.run()
+
+        with pytest.raises(KeyError):
+            state_out.get_secret(label="trusted-ca-certificates")
+
+    def test_given_bundle_secret_exists_when_get_trusted_ca_certificates_action_then_bundle_is_returned(  # noqa: E501
+        self,
+    ):
+        existing = scenario.Secret(
+            {"ca-certificates": CA_1}, owner="app", label="trusted-ca-certificates"
+        )
+        state_in = scenario.State(config={"mode": "app"}, leader=True, secrets={existing})
+
+        self.ctx.run(self.ctx.on.action("get-trusted-ca-certificates"), state=state_in)
+
+        assert self.ctx.action_results == {"ca-certificates": CA_1, "count": 1}
