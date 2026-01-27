@@ -253,3 +253,33 @@ class TestTLSRequirer:
             unit_name=leader_unit.name,
             expected_certificate_attributes=expected_certificate_attributes,
         )
+
+    async def test_given_certificate_transfer_relation_when_get_trusted_ca_certificates_action_then_bundle_is_returned(  # noqa: E501
+        self, ops_test: OpsTest, deploy: None
+    ):
+        assert ops_test.model
+        await ops_test.model.integrate(
+            relation1=f"{self.APP_NAME}:certificate_transfer",
+            relation2=f"{self.SELF_SIGNED_CERTIFICATES_APP_NAME}:send-ca-cert",
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[self.APP_NAME],
+            timeout=1000,
+            raise_on_blocked=False,
+        )
+
+        leader_unit = await get_leader_unit(ops_test.model, self.APP_NAME)
+        action = await leader_unit.run_action(action_name="get-trusted-ca-certificates")
+        action_output = await ops_test.model.get_action_output(
+            action_uuid=action.entity_id, wait=60
+        )
+
+        assert action_output["return-code"] == 0
+
+        ca_bundle = action_output.get("ca-certificates")
+        assert ca_bundle
+        assert "-----BEGIN CERTIFICATE-----" in ca_bundle
+        assert "-----END CERTIFICATE-----" in ca_bundle
+
+        cert = Certificate(ca_bundle)
+        assert cert.common_name
