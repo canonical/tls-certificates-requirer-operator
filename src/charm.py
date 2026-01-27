@@ -414,7 +414,7 @@ class TLSRequirerCharm(CharmBase):
         all_certificates = self.certificate_transfer_requirer.get_all_certificates()
 
         if not all_certificates:
-            logger.info("No trusted CA certificates available across any relations")
+            logger.debug("No trusted CA certificates available across any relations")
             self._cleanup_ca_secret_if_empty()
             return
 
