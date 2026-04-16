@@ -26,7 +26,7 @@ env:
 jobs:
   scan:
     name: Secscan
-    uses: canonical/identity-credentials-workflows/.github/workflows/secscan-charm.yaml@v0
+    uses: canonical/identity-credentials-workflows/.github/workflows/secscan-charm.yaml@v1
     with:
       charm: tls-certificates-requirer
       track: "latest"
