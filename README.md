@@ -1,4 +1,5 @@
 # TLS Certificates Requirer Operator
+
 [![CharmHub Badge](https://charmhub.io/tls-certificates-requirer/badge.svg)](https://charmhub.io/tls-certificates-requirer)
 
 Charm that requests X.509 certificates using the `tls-certificates` interface.
@@ -10,25 +11,12 @@ and provide it back into their application relation data.
 
 This charm is useful when developing and testing certificate providers.
 
-## Pre-requisites
+For more information, including guides, integrations, and configuration options, read the [TLS Certificates Requirer documentation](https://charmhub.io/tls-certificates-requirer).
 
-- Juju >= 3.0
+## Project & Community
 
-## Usage
+TLS Certificates Requirer Operator is an open source project that warmly welcomes community contributions, suggestions, fixes, and constructive feedback.
 
-Deploy the charm and relate it to a certificate provider:
-
-```bash
-juju deploy tls-certificates-requirer
-juju relate tls-certificates-requirer <TLS Certificates Provider>
-```
-
-Access the generated certificate:
-
-```bash
-juju run tls-certificates-requirer/leader get-certificate
-```
-
-## Relations
-
-- `tls-certificates`: Used for charms that require/provide TLS certificates.
+- To contribute to the code Please see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines and best practices.
+- Raise software issues or feature requests in [GitHub](https://github.com/canonical/tls-certificates-requirer-operator/issues)
+- Meet the community and chat with us on [Matrix](https://matrix.to/#/#tls:ubuntu.com)
