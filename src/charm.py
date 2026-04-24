@@ -41,6 +41,9 @@ class TLSRequirerCharm(CharmBase):
             self._on_certificates_relation_broken,
         )
         self.framework.observe(self.on.get_certificate_action, self._on_get_certificate_action)
+        self.framework.observe(
+            self.on.rotate_private_key_action, self._on_rotate_private_key_action
+        )
         mode = self._get_config_mode()
         if not mode:
             logger.error("Invalid mode configuration: only 'unit' and 'app' are allowed")
@@ -396,6 +399,28 @@ class TLSRequirerCharm(CharmBase):
             else:
                 event.fail(f"Certificate not available: {certificate_request.common_name}")
         event.set_results({"certificates": json.dumps(certificates)})
+
+    def _on_rotate_private_key_action(self, event: ActionEvent) -> None:
+        """Triggered when users run the `rotate-private-key` Juju action.
+
+        Args:
+            event: Juju event
+        """
+        is_valid, msg = self._config_is_valid()
+        if not is_valid:
+            event.fail(f"Invalid configuration: {msg}")
+            return
+        mode = self._get_config_mode()
+        if mode == Mode.APP and not self.unit.is_leader():
+            event.fail("Only leader unit can rotate private key in app mode")
+            return
+        try:
+            self.certificates.regenerate_private_key()
+            logger.info("Private key regenerated successfully")
+            event.set_results({"result": "Private key regenerated successfully"})
+        except Exception as e:
+            logger.error("Failed to regenerate private key: %s", str(e))
+            event.fail(f"Failed to regenerate private key: {str(e)}")
 
     def _get_unit_number(self) -> str:
         return self.unit.name.split("/")[1]

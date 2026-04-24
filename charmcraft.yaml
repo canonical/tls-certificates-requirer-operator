@@ -135,5 +135,8 @@ actions:
   get-certificate:
     description: Returns the TLS Certificate.
 
+  rotate-private-key:
+    description: Regenerate the private key and request a new certificate.
+
   get-trusted-ca-certificates: 
     description: Get the trusted CA certificates received via certificate-transfer interface.
