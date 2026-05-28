@@ -14,14 +14,14 @@ concurrency:
 
 jobs:
   lint-report:
-    uses: canonical/identity-credentials-workflows/.github/workflows/lint-report.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/lint-report.yaml@v2.0.1
 
   static-analysis:
     name: Static analysis
-    uses: canonical/identity-credentials-workflows/.github/workflows/static-analysis.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/static-analysis.yaml@v2.0.1
 
   unit-tests-with-coverage:
-    uses: canonical/identity-credentials-workflows/.github/workflows/unit-test.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/unit-test.yaml@v2.0.1
 
   build-for-integration:
     needs:
@@ -36,7 +36,7 @@ jobs:
       - lint-report
       - static-analysis
       - unit-tests-with-coverage
-    uses: canonical/identity-credentials-workflows/.github/workflows/build-charm-amd.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/build-charm-amd.yaml@v2.0.1
     with:
       path: ""
 
@@ -45,7 +45,7 @@ jobs:
       - lint-report
       - static-analysis
       - unit-tests-with-coverage
-    uses: canonical/identity-credentials-workflows/.github/workflows/build-charm-arm.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/build-charm-arm.yaml@v2.0.1
     with:
       path: ""
 
@@ -62,7 +62,7 @@ jobs:
       - integration-test
       - build
     if: ${{ github.ref_name == 'main' }}
-    uses: canonical/identity-credentials-workflows/.github/workflows/publish-charm.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/publish-charm.yaml@v2.0.1
     with:
       destination_channel: latest/edge
       artifacts-key: ${{ needs.build.outputs.artifacts-key }}
@@ -78,7 +78,7 @@ jobs:
       - integration-test
       - build-arm
     if: ${{ github.ref_name == 'main' }}
-    uses: canonical/identity-credentials-workflows/.github/workflows/publish-charm.yaml@v1
+    uses: canonical/identity-credentials-workflows/.github/workflows/publish-charm.yaml@v2.0.1
     with:
       destination_channel: latest/edge
       artifacts-key: ${{ needs.build-arm.outputs.artifacts-key }}
