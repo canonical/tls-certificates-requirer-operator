@@ -72,6 +72,9 @@ class TLSRequirerCharm(CharmBase):
         self.framework.observe(
             self.on.get_trusted_ca_certificates_action, self._on_get_trusted_ca_certificates_action
         )
+        self.framework.observe(
+            self.on.get_provider_capabilities_action, self._on_get_provider_capabilities_action
+        )
 
     @property
     def _certificates_relation_created(self) -> bool:
@@ -486,6 +489,39 @@ class TLSRequirerCharm(CharmBase):
             )
         except Exception as exc:
             event.fail(f"Failed to retrieve trusted CA bundle: {str(exc)}")
+
+    def _on_get_provider_capabilities_action(self, event: ActionEvent) -> None:
+        """Return the provider's advertised capabilities.
+
+        Retrieves the provider's capabilities from the relation data, including
+        support for IP SANs, wildcard DNS, subdomains, CA certificates, and
+        allowed domains.
+
+        Args:
+            event: Juju action event.
+        """
+        capabilities = self.certificates.get_provider_capabilities()
+        if not capabilities:
+            event.fail(message="No provider capabilities are currently available.")
+            return
+
+        # Convert capabilities to a dictionary, excluding None values.
+        # Juju action result keys must use hyphens, not underscores.
+        results = {}
+        if capabilities.supports_ip_sans is not None:
+            results["supports-ip-sans"] = str(capabilities.supports_ip_sans)
+        if capabilities.supports_wildcard_dns is not None:
+            results["supports-wildcard-dns"] = str(capabilities.supports_wildcard_dns)
+        if capabilities.supports_subdomain is not None:
+            results["supports-subdomain"] = str(capabilities.supports_subdomain)
+        if capabilities.supports_ca_certificates is not None:
+            results["supports-ca-certificates"] = str(capabilities.supports_ca_certificates)
+        if capabilities.allowed_domains is not None:
+            results["allowed-domains"] = json.dumps(capabilities.allowed_domains)
+        if capabilities.provider_type is not None:
+            results["provider-type"] = capabilities.provider_type
+
+        event.set_results(results)
 
 
 if __name__ == "__main__":

@@ -5,9 +5,10 @@ requires-python = ">=3.10"
 
 dependencies = [
     "charmlibs-interfaces-certificate_transfer",
-    "charmlibs-interfaces-tls-certificates",
+    "charmlibs-interfaces-tls-certificates @ git+https://github.com/saltiyazan/charmlibs@TLSENG-1115#subdirectory=interfaces/tls-certificates",
     "cryptography",
     "ops",
+    "pydantic<2",
 ]
 
 [dependency-groups]
