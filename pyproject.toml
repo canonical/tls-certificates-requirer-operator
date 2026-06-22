@@ -4,9 +4,10 @@ version = "0.1.0"
 requires-python = ">=3.10"
 
 dependencies = [
+    "charmlibs-interfaces-certificate_transfer",
+    "charmlibs-interfaces-tls-certificates",
     "cryptography",
     "ops",
-    "pydantic",
 ]
 
 [dependency-groups]
