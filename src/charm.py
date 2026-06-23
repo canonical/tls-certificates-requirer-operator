@@ -54,7 +54,7 @@ class TLSRequirerCharm(CharmBase):
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
             relationship_name="certificates",
-            certificate_requests=self._get_certificate_requests(),
+            certificate_requests=self._get_certificate_requests,
             mode=mode,
             refresh_events=[
                 self.on.config_changed,
@@ -93,6 +93,12 @@ class TLSRequirerCharm(CharmBase):
         is_valid, msg = self._config_is_valid()
         if not is_valid:
             event.add_status(BlockedStatus(f"Invalid configuration: {msg}"))
+            return
+        conflict, conflict_msg = self._capabilities_conflict()
+        if conflict:
+            event.add_status(
+                BlockedStatus(f"Configuration conflicts with provider: {conflict_msg}")
+            )
             return
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
@@ -173,6 +179,63 @@ class TLSRequirerCharm(CharmBase):
         assigned_certificates_num = len(assigned_certs)
         certificate_requests_num = len(self._get_certificate_requests())
         return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
+
+    def _get_provider_capabilities(self) -> Optional[Any]:
+        """Return provider capabilities when available."""
+        certificates = getattr(self, "certificates", None)
+        if certificates is None:
+            return None
+        return certificates.get_provider_capabilities()
+
+    def _capabilities_conflict(self) -> Tuple[bool, str]:
+        """Return whether the configured requests conflict with the provider capabilities.
+
+        The provider's capabilities may only become available after the relation is
+        established, so this is evaluated on every status collection rather than only
+        at startup. Each capability defaults to ``None`` ("unspecified") and is only
+        considered a conflict when the provider explicitly advertises that it cannot
+        satisfy a configured request.
+        """
+        capabilities = self._get_provider_capabilities()
+        if not capabilities:
+            return False, ""
+        certificate_requests = self._get_certificate_requests()
+        for certificate_request in certificate_requests:
+            if certificate_request.is_ca and capabilities.supports_ca_certificates is False:
+                return True, "Provider does not support CA certificates"
+            dns_names = self._get_request_dns_names(certificate_request)
+            if capabilities.supports_wildcard_dns is False and any(
+                name.startswith("*.") for name in dns_names
+            ):
+                return True, "Provider does not support wildcard DNS names"
+            if capabilities.allowed_domains is not None:
+                disallowed = [
+                    name
+                    for name in dns_names
+                    if not self._dns_name_is_allowed(name, capabilities.allowed_domains)
+                ]
+                if disallowed:
+                    return True, f"Provider does not allow domain(s): {', '.join(disallowed)}"
+        return False, ""
+
+    def _get_request_dns_names(
+        self, certificate_request: CertificateRequestAttributes
+    ) -> FrozenSet[str]:
+        """Return the set of DNS names in a certificate request, including the common name."""
+        dns_names = set(certificate_request.sans_dns or frozenset())
+        if certificate_request.common_name:
+            dns_names.add(certificate_request.common_name)
+        return frozenset(dns_names)
+
+    def _dns_name_is_allowed(self, dns_name: str, allowed_domains: List[str]) -> bool:
+        """Return whether a DNS name falls within one of the provider's allowed domains."""
+        candidate = dns_name[2:] if dns_name.startswith("*.") else dns_name
+        candidate = candidate.lower()
+        for allowed_domain in allowed_domains:
+            normalized = allowed_domain.lstrip(".").lower()
+            if candidate == normalized or candidate.endswith(f".{normalized}"):
+                return True
+        return False
 
     def _get_certificate_requests(self) -> List[CertificateRequestAttributes]:
         return [
