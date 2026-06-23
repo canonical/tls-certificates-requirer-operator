@@ -14,6 +14,7 @@ from charmlibs.interfaces.certificate_transfer import (
 from charmlibs.interfaces.tls_certificates import (
     CertificateRequestAttributes,
     Mode,
+    ProviderCapabilities,
     TLSCertificatesRequiresV4,
 )
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
@@ -180,7 +181,7 @@ class TLSRequirerCharm(CharmBase):
         certificate_requests_num = len(self._get_certificate_requests())
         return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
 
-    def _get_provider_capabilities(self) -> Optional[Any]:
+    def _get_provider_capabilities(self) -> Optional[ProviderCapabilities]:
         """Return provider capabilities when available."""
         certificates = getattr(self, "certificates", None)
         if certificates is None:
@@ -237,7 +238,20 @@ class TLSRequirerCharm(CharmBase):
                 return True
         return False
 
-    def _get_certificate_requests(self) -> List[CertificateRequestAttributes]:
+    def _get_certificate_requests(
+        self, capabilities: Optional[ProviderCapabilities] = None
+    ) -> List[CertificateRequestAttributes]:
+        """Return the certificate requests derived from configuration.
+
+        The library invokes this as a callable on every hook, passing the provider's
+        currently advertised capabilities (or ``None`` when none are advertised yet).
+        Requests are built purely from operator configuration; capabilities are used
+        only to report conflicts via ``_capabilities_conflict`` and do not reshape the
+        requested attributes.
+
+        Args:
+            capabilities: The provider's advertised capabilities, if any.
+        """
         return [
             CertificateRequestAttributes(
                 common_name=self._get_common_name(i),

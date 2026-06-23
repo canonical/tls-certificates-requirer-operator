@@ -99,7 +99,7 @@ wheels = [
 [[package]]
 name = "charmlibs-interfaces-tls-certificates"
 version = "1.8.3"
-source = { git = "https://github.com/saltiyazan/charmlibs?subdirectory=interfaces%2Ftls-certificates&rev=TLSENG-1115#6943cc9797f7d1d7c75b3b5597c0c18f0b640bf1" }
+source = { git = "https://github.com/saltiyazan/charmlibs?subdirectory=interfaces%2Ftls-certificates&rev=TLSENG-1115#3d5a232598352b828c7423138a18ff57780d0b21" }
 dependencies = [
     { name = "cryptography" },
     { name = "ops" },
