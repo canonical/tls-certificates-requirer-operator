@@ -14,6 +14,7 @@ from charmlibs.interfaces.certificate_transfer import (
 from charmlibs.interfaces.tls_certificates import (
     CertificateRequestAttributes,
     Mode,
+    ProviderCapabilities,
     TLSCertificatesRequiresV4,
 )
 from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, RelationBrokenEvent
@@ -54,7 +55,7 @@ class TLSRequirerCharm(CharmBase):
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
             relationship_name="certificates",
-            certificate_requests=self._get_certificate_requests(),
+            certificate_requests=self._get_certificate_requests,
             mode=mode,
             refresh_events=[
                 self.on.config_changed,
@@ -71,6 +72,9 @@ class TLSRequirerCharm(CharmBase):
         )
         self.framework.observe(
             self.on.get_trusted_ca_certificates_action, self._on_get_trusted_ca_certificates_action
+        )
+        self.framework.observe(
+            self.on.get_provider_capabilities_action, self._on_get_provider_capabilities_action
         )
 
     @property
@@ -90,6 +94,12 @@ class TLSRequirerCharm(CharmBase):
         is_valid, msg = self._config_is_valid()
         if not is_valid:
             event.add_status(BlockedStatus(f"Invalid configuration: {msg}"))
+            return
+        conflict, conflict_msg = self._capabilities_conflict()
+        if conflict:
+            event.add_status(
+                BlockedStatus(f"Configuration conflicts with provider: {conflict_msg}")
+            )
             return
         mode = self._get_config_mode()
         if mode == Mode.UNIT:
@@ -171,7 +181,77 @@ class TLSRequirerCharm(CharmBase):
         certificate_requests_num = len(self._get_certificate_requests())
         return f"{assigned_certificates_num}/{certificate_requests_num} certificate requests are fulfilled"  # noqa: E501
 
-    def _get_certificate_requests(self) -> List[CertificateRequestAttributes]:
+    def _get_provider_capabilities(self) -> Optional[ProviderCapabilities]:
+        """Return provider capabilities when available."""
+        certificates = getattr(self, "certificates", None)
+        if certificates is None:
+            return None
+        return certificates.get_provider_capabilities()
+
+    def _capabilities_conflict(self) -> Tuple[bool, str]:
+        """Return whether the configured requests conflict with the provider capabilities.
+
+        The provider's capabilities may only become available after the relation is
+        established, so this is evaluated on every status collection rather than only
+        at startup. Each capability defaults to ``None`` ("unspecified") and is only
+        considered a conflict when the provider explicitly advertises that it cannot
+        satisfy a configured request.
+        """
+        capabilities = self._get_provider_capabilities()
+        if not capabilities:
+            return False, ""
+        certificate_requests = self._get_certificate_requests()
+        for certificate_request in certificate_requests:
+            if certificate_request.is_ca and capabilities.supports_ca_certificates is False:
+                return True, "Provider does not support CA certificates"
+            dns_names = self._get_request_dns_names(certificate_request)
+            if capabilities.supports_wildcard_dns is False and any(
+                name.startswith("*.") for name in dns_names
+            ):
+                return True, "Provider does not support wildcard DNS names"
+            if capabilities.allowed_domains is not None:
+                disallowed = [
+                    name
+                    for name in dns_names
+                    if not self._dns_name_is_allowed(name, capabilities.allowed_domains)
+                ]
+                if disallowed:
+                    return True, f"Provider does not allow domain(s): {', '.join(disallowed)}"
+        return False, ""
+
+    def _get_request_dns_names(
+        self, certificate_request: CertificateRequestAttributes
+    ) -> FrozenSet[str]:
+        """Return the set of DNS names in a certificate request, including the common name."""
+        dns_names = set(certificate_request.sans_dns or frozenset())
+        if certificate_request.common_name:
+            dns_names.add(certificate_request.common_name)
+        return frozenset(dns_names)
+
+    def _dns_name_is_allowed(self, dns_name: str, allowed_domains: List[str]) -> bool:
+        """Return whether a DNS name falls within one of the provider's allowed domains."""
+        candidate = dns_name[2:] if dns_name.startswith("*.") else dns_name
+        candidate = candidate.lower()
+        for allowed_domain in allowed_domains:
+            normalized = allowed_domain.lstrip(".").lower()
+            if candidate == normalized or candidate.endswith(f".{normalized}"):
+                return True
+        return False
+
+    def _get_certificate_requests(
+        self, capabilities: Optional[ProviderCapabilities] = None
+    ) -> List[CertificateRequestAttributes]:
+        """Return the certificate requests derived from configuration.
+
+        The library invokes this as a callable on every hook, passing the provider's
+        currently advertised capabilities (or ``None`` when none are advertised yet).
+        Requests are built purely from operator configuration; capabilities are used
+        only to report conflicts via ``_capabilities_conflict`` and do not reshape the
+        requested attributes.
+
+        Args:
+            capabilities: The provider's advertised capabilities, if any.
+        """
         return [
             CertificateRequestAttributes(
                 common_name=self._get_common_name(i),
@@ -486,6 +566,39 @@ class TLSRequirerCharm(CharmBase):
             )
         except Exception as exc:
             event.fail(f"Failed to retrieve trusted CA bundle: {str(exc)}")
+
+    def _on_get_provider_capabilities_action(self, event: ActionEvent) -> None:
+        """Return the provider's advertised capabilities.
+
+        Retrieves the provider's capabilities from the relation data, including
+        support for IP SANs, wildcard DNS, subdomains, CA certificates, and
+        allowed domains.
+
+        Args:
+            event: Juju action event.
+        """
+        capabilities = self.certificates.get_provider_capabilities()
+        if not capabilities:
+            event.fail(message="No provider capabilities are currently available.")
+            return
+
+        # Convert capabilities to a dictionary, excluding None values.
+        # Juju action result keys must use hyphens, not underscores.
+        results = {}
+        if capabilities.supports_ip_sans is not None:
+            results["supports-ip-sans"] = str(capabilities.supports_ip_sans)
+        if capabilities.supports_wildcard_dns is not None:
+            results["supports-wildcard-dns"] = str(capabilities.supports_wildcard_dns)
+        if capabilities.supports_subdomain is not None:
+            results["supports-subdomain"] = str(capabilities.supports_subdomain)
+        if capabilities.supports_ca_certificates is not None:
+            results["supports-ca-certificates"] = str(capabilities.supports_ca_certificates)
+        if capabilities.allowed_domains is not None:
+            results["allowed-domains"] = json.dumps(capabilities.allowed_domains)
+        if capabilities.provider_type is not None:
+            results["provider-type"] = capabilities.provider_type
+
+        event.set_results(results)
 
 
 if __name__ == "__main__":

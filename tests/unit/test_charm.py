@@ -2,6 +2,7 @@
 # See LICENSE file for licensing details.
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -92,6 +93,7 @@ class TestCharmUnitMode:
             [],
             None,
         )
+        self.mock_tls_requires.return_value.get_provider_capabilities.return_value = None
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -259,7 +261,9 @@ class TestCharmUnitMode:
         instance_calls = self.mock_tls_requires.call_args_list
         assert len(instance_calls) == 1
         _, kwargs = instance_calls[0]
-        certificate_requests = kwargs["certificate_requests"]
+        certificate_requests_callable = kwargs["certificate_requests"]
+        assert callable(certificate_requests_callable)
+        certificate_requests = kwargs["certificate_requests"]()
         assert (
             certificate_requests[0].common_name
             == f"cert-0.unit-0.tls-certificates-requirer.{model_name}"
@@ -274,6 +278,101 @@ class TestCharmUnitMode:
         assert certificate_requests[1].sans_dns == frozenset(
             {f"cert-1.unit-0.tls-certificates-requirer.{model_name}"}
         )
+
+    def test_given_provider_capabilities_conflict_with_config_when_evaluate_status_then_status_is_blocked(  # noqa: E501
+        self,
+    ):
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "is_ca": True,
+            },
+            relations={certificates_relation},
+        )
+
+        self.mock_tls_requires.return_value.get_provider_capabilities.return_value = (
+            SimpleNamespace(
+                supports_ca_certificates=False,
+                supports_wildcard_dns=None,
+                allowed_domains=None,
+            )
+        )
+
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Configuration conflicts with provider: Provider does not support CA certificates"
+        )
+
+    def test_given_provider_disallows_domain_when_evaluate_status_then_status_is_blocked(self):
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "common_name": "api.notallowed.com",
+                "sans_dns": "api.notallowed.com",
+            },
+            relations={certificates_relation},
+            leader=True,
+        )
+
+        self.mock_tls_requires.return_value.get_provider_capabilities.return_value = (
+            SimpleNamespace(
+                supports_ca_certificates=None,
+                supports_wildcard_dns=None,
+                allowed_domains=["example.com"],
+            )
+        )
+
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Configuration conflicts with provider: "
+            "Provider does not allow domain(s): api.notallowed.com"
+        )
+
+    def test_given_provider_capabilities_compatible_with_config_when_evaluate_status_then_status_is_active(  # noqa: E501
+        self,
+    ):
+        certificates_relation = scenario.Relation(
+            endpoint="certificates",
+            interface="tls-certificates",
+            remote_app_name="certificate-provider",
+        )
+
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "common_name": "api.example.com",
+                "sans_dns": "api.example.com",
+                "is_ca": True,
+            },
+            relations={certificates_relation},
+            leader=True,
+        )
+
+        self.mock_tls_requires.return_value.get_provider_capabilities.return_value = (
+            SimpleNamespace(
+                supports_ca_certificates=True,
+                supports_wildcard_dns=True,
+                allowed_domains=["example.com"],
+            )
+        )
+
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
+
+        assert state_out.unit_status == ActiveStatus("0/1 certificate requests are fulfilled")
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,
@@ -501,6 +600,7 @@ class TestCharmAppMode:
             [],
             None,
         )
+        self.mock_tls_requires.return_value.get_provider_capabilities.return_value = None
 
     @pytest.fixture(autouse=True)
     def private_key_fixture(self):
@@ -718,7 +818,9 @@ class TestCharmAppMode:
         instance_calls = self.mock_tls_requires.call_args_list
         assert len(instance_calls) == 1
         _, kwargs = instance_calls[0]
-        certificate_requests = kwargs["certificate_requests"]
+        certificate_requests_callable = kwargs["certificate_requests"]
+        assert callable(certificate_requests_callable)
+        certificate_requests = kwargs["certificate_requests"]()
         assert (
             certificate_requests[0].common_name == f"cert-0.tls-certificates-requirer.{model_name}"
         )
