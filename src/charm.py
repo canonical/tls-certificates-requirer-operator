@@ -51,6 +51,13 @@ class TLSRequirerCharm(CharmBase):
         if mode == Mode.APP and not self.unit.is_leader():
             logger.warning("Only leader unit will request a certificate in app mode")
             return
+        renewal_relative_time = self._get_config_renewal_relative_time()
+        if renewal_relative_time is None or not 0.5 < renewal_relative_time <= 1.0:
+            logger.error(
+                "Invalid renewal_relative_time configuration: "
+                "must be greater than 0.5 and at most 1.0"
+            )
+            return
         self.certificates = TLSCertificatesRequiresV4(
             charm=self,
             relationship_name="certificates",
@@ -59,6 +66,7 @@ class TLSRequirerCharm(CharmBase):
             refresh_events=[
                 self.on.config_changed,
             ],
+            renewal_relative_time=renewal_relative_time,
         )
         self.certificate_transfer_requirer = CertificateTransferRequires(
             self, "certificate_transfer"
@@ -272,10 +280,22 @@ class TLSRequirerCharm(CharmBase):
         """Return whether the configuration is valid."""
         if self._get_config_num_certificates() > 1 and self._get_config_common_name():
             return False, "Common name can't be set when requesting multiple certificates"
+        renewal_relative_time = self._get_config_renewal_relative_time()
+        if renewal_relative_time is None:
+            return False, "renewal_relative_time must be a number"
+        if not 0.5 < renewal_relative_time <= 1.0:
+            return False, "renewal_relative_time must be greater than 0.5 and at most 1.0"
         config_mode = self._get_config_mode()
         if config_mode not in [Mode.UNIT, Mode.APP]:
             return False, "Invalid mode configuration: only 'unit' and 'app' are allowed"
         return True, ""
+
+    def _get_config_renewal_relative_time(self) -> Optional[float]:
+        """Return the configured certificate renewal point."""
+        value = self.model.config.get("renewal_relative_time", 0.9)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
 
     def _get_config_num_certificates(self) -> int:
         """Return the number of certificates to request."""

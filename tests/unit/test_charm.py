@@ -79,6 +79,22 @@ class TestCharmInvalidMode:
             "Invalid configuration: Invalid mode configuration: only 'unit' and 'app' are allowed"
         )
 
+    def test_given_invalid_renewal_relative_time_when_evaluate_status_then_status_is_blocked(
+        self,
+    ):
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "renewal_relative_time": 0.5,
+            },
+        )
+
+        state_out = self.ctx.run(self.ctx.on.collect_unit_status(), state=state_in)
+
+        assert state_out.unit_status == BlockedStatus(
+            "Invalid configuration: renewal_relative_time must be greater than 0.5 and at most 1.0"
+        )
+
 
 class TestCharmUnitMode:
     patcher_tls_requires = patch(
@@ -274,6 +290,20 @@ class TestCharmUnitMode:
         assert certificate_requests[1].sans_dns == frozenset(
             {f"cert-1.unit-0.tls-certificates-requirer.{model_name}"}
         )
+
+    def test_given_renewal_relative_time_in_config_when_update_status_then_it_is_passed_to_library(
+        self,
+    ):
+        state_in = scenario.State(
+            config={
+                "mode": "unit",
+                "renewal_relative_time": 0.7,
+            },
+        )
+
+        self.ctx.run(self.ctx.on.update_status(), state=state_in)
+
+        assert self.mock_tls_requires.call_args.kwargs["renewal_relative_time"] == 0.7
 
     def test_given_csrs_match_when_on_certificate_available_then_certificate_is_stored(
         self,

@@ -131,6 +131,14 @@ config:
       description: |
         If set to true, the charm will request a certificate that can be used as a Certificate Authority (CA).
 
+    renewal_relative_time:
+      type: float
+      default: 0.9
+      description: |
+        Fraction of the certificate validity period after which the certificate is renewed.
+        Must be greater than 0.5 and at most 1.0. The default of 0.9 renews at 90% of the
+        certificate validity period.
+
 actions:
   get-certificate:
     description: Returns the TLS Certificate.
